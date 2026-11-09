@@ -126,6 +126,23 @@ export async function createRide(payload: {
   return res.data?.data?.ride as Ride;
 }
 
+export async function getVoiceBookingPreview(payload: {
+  transcript: string;
+  currentLocation: { latitude: number; longitude: number };
+}): Promise<any> {
+  const res = await apiClient.post('/voice-booking/preview', payload);
+  return res.data?.data;
+}
+
+export async function transcribeVoiceBookingAudio(payload: {
+  audioBase64: string;
+  currentLocation: { latitude: number; longitude: number };
+}): Promise<any> {
+  const res = await apiClient.post('/voice-booking/transcribe', payload);
+  return res.data?.data;
+}
+
+
 /**
  * GET /api/rides/my-rides
  *

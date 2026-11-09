@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { Colors } from '../../constants/colors';
@@ -20,17 +21,15 @@ const { height } = Dimensions.get('window');
 export default function WelcomeScreen({ navigation }: Props) {
   return (
     <LinearGradient
-      colors={['#0B0F17', '#131B2A', '#1A2436']}
+      colors={['#111111', '#1B1B1B', '#252525']}
       style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B0F17" />
 
       {/* Hero Badge & Glow */}
       <View style={styles.hero}>
         <View style={styles.glowOuter}>
-          <LinearGradient
-            colors={['#00D26A', '#059669']}
-            style={styles.badgeGradient}>
-            <Text style={styles.badgeEmoji}>🚘</Text>
+          <LinearGradient colors={['#FFFFFF', '#E8E8E8']} style={styles.badgeGradient}>
+            <Ionicons name="car-sport" size={42} color={Colors.primary} />
           </LinearGradient>
         </View>
       </View>
@@ -43,7 +42,7 @@ export default function WelcomeScreen({ navigation }: Props) {
 
       {/* Feature Badges */}
       <View style={styles.features}>
-        {['⚡ Instant Matching', '📍 Live GPS Tracking', '💳 Cash & UPI'].map(f => (
+        {['Instant matching', 'Live tracking', 'Cash & UPI'].map(f => (
           <View key={f} style={styles.pill}>
             <Text style={styles.pillText}>{f}</Text>
           </View>
@@ -59,17 +58,17 @@ export default function WelcomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Login', { role: 'passenger' })}
           activeOpacity={0.8}>
           <LinearGradient
-            colors={['#00D26A', '#047857']}
+            colors={Colors.gradientPrimary}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.roleGradient}>
             <View style={styles.roleHeader}>
-              <Text style={styles.roleEmoji}>🧳</Text>
+              <View style={styles.roleIcon}><Ionicons name="car-outline" size={25} color={Colors.white} /></View>
               <View style={styles.roleTextContainer}>
                 <Text style={styles.roleTitle}>Book a Ride</Text>
                 <Text style={styles.roleSubtitle}>Passenger Account • Fast Pickups</Text>
               </View>
-              <Text style={styles.arrowIcon}>→</Text>
+              <Ionicons name="arrow-forward" size={22} color={Colors.white} />
             </View>
           </LinearGradient>
         </TouchableOpacity>
@@ -79,17 +78,17 @@ export default function WelcomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Login', { role: 'driver' })}
           activeOpacity={0.8}>
           <LinearGradient
-            colors={['#10B981', '#0F766E']}
+            colors={Colors.gradientSuccess}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.roleGradient}>
             <View style={styles.roleHeader}>
-              <Text style={styles.roleEmoji}>🚕</Text>
+              <View style={styles.roleIcon}><Ionicons name="speedometer-outline" size={25} color={Colors.white} /></View>
               <View style={styles.roleTextContainer}>
                 <Text style={styles.roleTitle}>Drive with GoRide</Text>
                 <Text style={styles.roleSubtitle}>Driver Partner • Earn Daily</Text>
               </View>
-              <Text style={styles.arrowIcon}>→</Text>
+              <Ionicons name="arrow-forward" size={22} color={Colors.white} />
             </View>
           </LinearGradient>
         </TouchableOpacity>
@@ -117,11 +116,11 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(0, 210, 106, 0.15)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: 'rgba(0, 210, 106, 0.35)',
+    borderColor: 'rgba(255,255,255,0.20)',
   },
   badgeGradient: {
     width: 90,
@@ -129,14 +128,11 @@ const styles = StyleSheet.create({
     borderRadius: 45,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
     elevation: 8,
-  },
-  badgeEmoji: {
-    fontSize: 48,
   },
   brand: {
     alignItems: 'center',
@@ -150,7 +146,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontSize: FontSize.base,
-    color: Colors.textSecondary,
+    color: '#CFCFCF',
     marginTop: Spacing.xs,
     letterSpacing: 0.5,
   },
@@ -163,16 +159,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xxxl,
   },
   pill: {
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   pillText: {
     fontSize: FontSize.xs,
-    color: Colors.textSecondary,
+    color: '#D8D8D8',
     fontWeight: FontWeight.medium,
   },
   cta: {
@@ -207,8 +203,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
   },
-  roleEmoji: {
-    fontSize: 32,
+  roleIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   roleTextContainer: {
     flex: 1,
@@ -223,14 +224,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     marginTop: 2,
   },
-  arrowIcon: {
-    fontSize: 22,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
-  },
   disclaimer: {
     fontSize: FontSize.xs,
-    color: Colors.textMuted,
+    color: '#BEBEBE',
     textAlign: 'center',
     marginTop: Spacing.sm,
   },

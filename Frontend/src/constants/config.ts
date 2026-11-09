@@ -2,8 +2,16 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 function getResolvedHost(): string {
-  // 1. If running in Expo Go or dev client on a device/emulator, extract the host machine IP
-  // hostUri is e.g. "10.77.215.177:8081" or "192.168.1.10:8081"
+  // 1. Web: dynamically use current browser hostname
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      return window.location.hostname;
+    }
+    return 'localhost';
+  }
+
+  // 2. If running in Expo Go or dev client on a device/emulator, extract the host machine IP
+  // hostUri is e.g. "10.85.23.177:8081" or "192.168.1.10:8081"
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     const host = hostUri.split(':')[0];
@@ -12,12 +20,16 @@ function getResolvedHost(): string {
     }
   }
 
-  // 2. Web fallback
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
-    return window.location.hostname;
+  // 3. If EXPO_PUBLIC_API_URL has a local Wi-Fi / LAN IP, prioritize it for physical devices
+  const envUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_SOCKET_URL;
+  if (envUrl) {
+    const match = envUrl.match(/https?:\/\/([^:/]+)/);
+    if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1' && match[1] !== '10.0.2.2') {
+      return match[1];
+    }
   }
 
-  // 3. Android emulator fallback when hostUri is localhost/missing
+  // 4. Android emulator fallback when hostUri and env are missing
   if (Platform.OS === 'android') {
     return '10.0.2.2';
   }
@@ -30,6 +42,12 @@ function getApiBaseUrl(): string {
   // If explicitly pointing to a remote HTTPS server or tunnel, prioritize it
   if (envUrl && envUrl.startsWith('https://')) {
     return envUrl;
+  }
+
+  // Web platform: connect to the host that served the web app (e.g. localhost or current machine IP)
+  if (Platform.OS === 'web') {
+    const host = (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
+    return `http://${host}:5000/api`;
   }
 
   // In local development on device, dynamically use the host machine's IP from Metro
@@ -49,6 +67,12 @@ function getSocketUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
   if (envUrl && envUrl.startsWith('https://')) {
     return envUrl;
+  }
+
+  // Web platform: connect to the host that served the web app
+  if (Platform.OS === 'web') {
+    const host = (typeof window !== 'undefined' && window.location?.hostname) || 'localhost';
+    return `http://${host}:5000`;
   }
 
   const resolvedHost = getResolvedHost();
@@ -71,7 +95,7 @@ export const Config = {
     return getSocketUrl();
   },
   STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_51UClsuIviejFRg60X2aB7J8w3z5n7w9q8y',
-  RAZORPAY_KEY_ID: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_goridekey123',
+  RAZORPAY_KEY_ID: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_Tjur4krJetR3z1',
   DRIVER_REQUEST_TIMEOUT_SECONDS: 30,
 };
 

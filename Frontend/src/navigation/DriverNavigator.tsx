@@ -10,8 +10,8 @@ import {
 
 import {
   StyleSheet,
-  Text,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Colors } from '../constants/colors';
 import {
@@ -32,6 +32,9 @@ import DriverProfileScreen from '../screens/driver/ProfileScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 import EditProfileScreen from '../screens/driver/EditProfileScreen';
 import RideDetailScreen from '../screens/common/RideDetailScreen';
+import WalletScreen from '../screens/driver/WalletScreen';
+import HelpCenterScreen from '../screens/common/HelpCenterScreen';
+import TermsScreen from '../screens/common/TermsScreen';
 
 export type DriverStackParamList = {
   DriverTabs: undefined;
@@ -57,6 +60,9 @@ export type DriverStackParamList = {
   DriverRideHistory?: undefined;
   DriverNotifications?: undefined;
   DriverProfile?: undefined;
+  Wallet: undefined;
+  HelpCenter: undefined;
+  Terms: undefined;
 };
 
 export type DriverTabParamList = {
@@ -82,24 +88,21 @@ function TabIcon({
 }) {
   const icons: Record<
     keyof DriverTabParamList,
-    string
+    { active: any; inactive: any }
   > = {
-    DriverHome: '🗺',
-    Earnings: '💰',
-    DriverRideHistory: '📋',
-    DriverNotifications: '🔔',
-    DriverProfile: '👤',
+    DriverHome: { active: 'map', inactive: 'map-outline' },
+    Earnings: { active: 'wallet', inactive: 'wallet-outline' },
+    DriverRideHistory: { active: 'receipt', inactive: 'receipt-outline' },
+    DriverNotifications: { active: 'notifications', inactive: 'notifications-outline' },
+    DriverProfile: { active: 'person', inactive: 'person-outline' },
   };
 
   return (
-    <Text
-      style={{
-        fontSize: 20,
-        opacity: focused ? 1 : 0.5,
-      }}
-    >
-      {icons[name]}
-    </Text>
+    <Ionicons
+      name={icons[name][focused ? 'active' : 'inactive']}
+      size={22}
+      color={focused ? Colors.secondary : Colors.textMuted}
+    />
   );
 }
 
@@ -226,6 +229,9 @@ export default function DriverNavigator() {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen name="Wallet" component={WalletScreen as any} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="HelpCenter" component={HelpCenterScreen as any} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="Terms" component={TermsScreen as any} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }
@@ -233,17 +239,22 @@ export default function DriverNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: Colors.surface,
-    borderTopColor: Colors.border,
-    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.xs,
     paddingBottom: Spacing.sm,
-    height: 64,
+    height: 68,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 8,
   },
 
   tabLabel: {
     fontSize: FontSize.xs,
     fontWeight: FontWeight.medium,
-    marginTop: 2,
+    marginTop: 3,
   },
 
   badge: {

@@ -40,7 +40,7 @@ type Props = NativeStackScreenProps<PassengerStackParamList, 'ActiveRide'>;
 const { height: SCREEN_H } = Dimensions.get('window');
 
 const SHEET_SNAP_COLLAPSED = Math.max(240, SCREEN_H * 0.35);
-const SHEET_SNAP_EXPANDED  = SCREEN_H * 0.75;
+const SHEET_SNAP_EXPANDED = SCREEN_H * 0.75;
 
 export default function ActiveRideScreen({ navigation, route }: Props) {
   const { rideId } = route.params;
@@ -64,9 +64,9 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       driverLocation ||
       (currentRide?.pickupLocation
         ? {
-            latitude: currentRide.pickupLocation.coordinates[1],
-            longitude: currentRide.pickupLocation.coordinates[0],
-          }
+          latitude: currentRide.pickupLocation.coordinates[1],
+          longitude: currentRide.pickupLocation.coordinates[0],
+        }
         : null),
   });
   const [sosReceived, setSosReceived] = useState(false);
@@ -126,7 +126,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
 
     fetchOSRMRouteThroughPoints(routePoints)
       .then(res => setRouteCoords(res.coordinates))
-      .catch(() => {});
+      .catch(() => { });
   }, [currentRide?.pickupLocation, currentRide?.dropLocation, currentRide?.rideStatus, driverLocation?.latitude, driverLocation?.longitude]);
 
   // ── Polling & Socket Fallback ──────────────────────────────
@@ -135,24 +135,35 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       try {
         const updated = await getRide(rideId);
         setCurrentRide(updated);
-      } catch (e) {}
+      } catch (e) { }
     }, 4000);
     return () => clearInterval(interval);
   }, [rideId]);
 
+  const prevRideStatusRef = useRef<string | null>(null);
+
   // ── Map Bounds & Ride Completion ───────────────────────────
   useEffect(() => {
     if (!currentRide) return;
-    const coords: LatLng[] = [];
-    if (driverLocation) coords.push(driverLocation);
-    coords.push({ latitude: currentRide.pickupLocation.coordinates[1], longitude: currentRide.pickupLocation.coordinates[0] });
-    
-    // Only fit drop location if the ride has started, otherwise focus on pickup and driver
-    if (currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED) {
-      (currentRide.stops || []).forEach(stop => {
-        coords.push({ latitude: stop.location.coordinates[1], longitude: stop.location.coordinates[0] });
-      });
-      coords.push({ latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] });
+    const isStatusChanged = prevRideStatusRef.current !== currentRide.rideStatus;
+
+    if (isStatusChanged) {
+      prevRideStatusRef.current = currentRide.rideStatus;
+      const coords: LatLng[] = [];
+      if (driverLocation) coords.push(driverLocation);
+      coords.push({ latitude: currentRide.pickupLocation.coordinates[1], longitude: currentRide.pickupLocation.coordinates[0] });
+
+      // Only fit drop location if the ride has started, otherwise focus on pickup and driver
+      if (currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED) {
+        (currentRide.stops || []).forEach(stop => {
+          coords.push({ latitude: stop.location.coordinates[1], longitude: stop.location.coordinates[0] });
+        });
+        coords.push({ latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] });
+      }
+
+      if (coords.length > 0) {
+        mapRef.current?.fitBounds(coords, 100);
+      }
     }
 
     if (currentRide.rideStatus === RIDE_STATUS.DRIVER_ARRIVED && !hasNotifiedArrived.current) {
@@ -163,10 +174,6 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
         useNativeDriver: false,
       }).start();
       isExpanded.current = true;
-    }
-
-    if (coords.length > 0) {
-      mapRef.current?.fitBounds(coords, 100);
     }
 
     if (hasHandledTerminal.current) return;
@@ -193,7 +200,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       clearRide();
       Alert.alert('Ride Ended', msg, [{ text: 'OK', onPress: () => navigation.replace('HomeTabs') }]);
     }
-  }, [currentRide?.rideStatus, driverLocation]);
+  }, [currentRide?.rideStatus]);
 
   // ── Ensure details are loaded on mount ─────────────────────
   useEffect(() => {
@@ -216,9 +223,9 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       driverLocation ||
       (rideObj?.pickupLocation
         ? {
-            latitude: rideObj.pickupLocation.coordinates[1],
-            longitude: rideObj.pickupLocation.coordinates[0],
-          }
+          latitude: rideObj.pickupLocation.coordinates[1],
+          longitude: rideObj.pickupLocation.coordinates[0],
+        }
         : null);
 
     let targetPhone = '';
@@ -230,7 +237,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
         if (contactData?.contacts && contactData.contacts.length > 0) {
           targetPhone = contactData.contacts[0].phone;
         }
-      } catch {}
+      } catch { }
     }
 
     const message = buildEmergencyWhatsAppMessage({
@@ -253,6 +260,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   useEffect(() => {
     const handleSosTriggered = (payload: SosTriggeredPayload) => {
       if (!payload?.rideId || payload.rideId !== rideId) return;
+      if (payload.triggeredBy && payload.triggeredBy !== 'passenger') return;
 
       const sosIdentifier = payload.sosId || `${payload.rideId}_${Date.now()}`;
       if (handledSosIds.current.has(sosIdentifier)) return;
@@ -369,7 +377,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
     ].filter(Boolean).join('\n');
     try {
       await Share.share({ message, title: 'My GoRide Trip' });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function handleOpenPayment() {
@@ -394,7 +402,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   const displayOtp = otp;
 
   const pickupCoord = { latitude: currentRide.pickupLocation.coordinates[1], longitude: currentRide.pickupLocation.coordinates[0] };
-  const dropCoord   = { latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] };
+  const dropCoord = { latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] };
   const stopCoords = (currentRide.stops || [])
     .sort((a, b) => a.order - b.order)
     .map(stop => ({ latitude: stop.location.coordinates[1], longitude: stop.location.coordinates[0] }));
@@ -403,9 +411,9 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   const activeDriverCoord = driverLocation || (
     driverObj?.currentLocation?.coordinates
       ? {
-          latitude: driverObj.currentLocation.coordinates[1],
-          longitude: driverObj.currentLocation.coordinates[0],
-        }
+        latitude: driverObj.currentLocation.coordinates[1],
+        longitude: driverObj.currentLocation.coordinates[0],
+      }
       : undefined
   );
 
@@ -1022,3 +1030,4 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
   },
 });
+

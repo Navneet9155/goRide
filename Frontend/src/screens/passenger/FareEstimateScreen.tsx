@@ -53,7 +53,9 @@ export default function FareEstimateScreen({ navigation, route }: Props) {
 
   // ── Data State ─────────────────────────────────────────────
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>(VehicleType.CAR);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>(PaymentMethod.CASH);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>(
+    user?.preferredPaymentMethod === PaymentMethod.ONLINE ? PaymentMethod.ONLINE : PaymentMethod.CASH
+  );
   const [preferFemaleDriver, setPreferFemaleDriver] = useState(user?.gender === 'female');
   const [estimates, setEstimates] = useState<Record<string, any>>({});
   const [distanceKm, setDistanceKm] = useState<number | null>(null);

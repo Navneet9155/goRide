@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useEffect, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LatLng } from '../../services/maps/osrmService';
 
@@ -9,6 +9,17 @@ export interface MapContainerRef {
 }
 
 // ---------- Props ----------
+export interface AlternativeRoute {
+  coordinates: LatLng[];
+  distanceKm: number;
+  durationMin: number;
+  label: string;
+  diffMin?: number;
+  diffKm?: number;
+  isFastest?: boolean;
+  isShortest?: boolean;
+}
+
 interface MapContainerProps {
   initialRegion?: {
     latitude: number;
@@ -24,8 +35,11 @@ interface MapContainerProps {
   };
   onRegionChangeComplete?: (region: any) => void;
   onPress?: (event: any) => void;
+  onSelectRoute?: (index: number) => void;
   children?: React.ReactNode;
   routeCoordinates?: LatLng[];
+  alternativeRoutes?: AlternativeRoute[];
+  activeRouteIndex?: number;
   pickupLocation?: LatLng | null;
   dropLocation?: LatLng | null;
   stopLocations?: LatLng[];
@@ -41,101 +55,8 @@ interface MapContainerProps {
   showsMyLocationButton?: boolean;
 }
 
-// ---------- Component ----------
-export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
-  (
-    {
-      initialRegion = {
-        latitude: 28.6139,
-        longitude: 77.209,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      },
-      region,
-      onRegionChangeComplete,
-      onPress,
-      children,
-      routeCoordinates = [],
-      pickupLocation,
-      dropLocation,
-      stopLocations = [],
-      userLocation,
-      driverLocation,
-      drivers = [],
-      showsUserLocation = false,
-      showsMyLocationButton = false,
-    },
-    ref
-  ) => {
-    const iframeRef = useRef<HTMLIFrameElement>(null);
-
-    useImperativeHandle(ref, () => ({
-      flyTo(center: [number, number], zoom = 14) {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: 'flyTo', lat: center[1], lng: center[0], zoom },
-          '*'
-        );
-      },
-      fitBounds(coords: LatLng[], padding = 80) {
-        if (!coords || coords.length === 0) return;
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: 'fitBounds', coords, padding },
-          '*'
-        );
-      },
-    }));
-
-    // Re-send markers whenever props change
-    useEffect(() => {
-      const frame = iframeRef.current;
-      if (!frame) return;
-      const send = () => {
-        frame.contentWindow?.postMessage(
-          {
-            type: 'update',
-            pickupLocation,
-            dropLocation,
-            stopLocations,
-            userLocation,
-            driverLocation,
-            drivers,
-            routeCoordinates,
-            region,
-          },
-          '*'
-        );
-      };
-      // Wait for iframe to be ready
-      frame.addEventListener('load', send);
-      // Also send immediately in case already loaded
-      send();
-      return () => frame.removeEventListener('load', send);
-    }, [
-      pickupLocation,
-      dropLocation,
-      stopLocations,
-      userLocation,
-      driverLocation,
-      drivers,
-      routeCoordinates,
-      region,
-    ]);
-
-    // Listen for region changes posted from Leaflet map
-    useEffect(() => {
-      const handleMsg = (e: MessageEvent) => {
-        if (e.data && e.data.type === 'regionChange' && onRegionChangeComplete) {
-          onRegionChangeComplete(e.data.region);
-        }
-      };
-      window.addEventListener('message', handleMsg);
-      return () => window.removeEventListener('message', handleMsg);
-    }, [onRegionChangeComplete]);
-
-    const centerLat = region?.latitude ?? pickupLocation?.latitude ?? userLocation?.latitude ?? initialRegion.latitude;
-    const centerLng = region?.longitude ?? pickupLocation?.longitude ?? userLocation?.longitude ?? initialRegion.longitude;
-
-    const leafletHtml = `<!DOCTYPE html>
+function getLeafletWebHtml(initLat: number, initLng: number) {
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -146,9 +67,9 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
     * { box-sizing: border-box; }
     html, body, #map {
       width: 100%; height: 100%; margin: 0; padding: 0;
+      background-color: #e5e3df;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-    /* Google-Maps-style zoom control */
     .leaflet-control-zoom {
       border: none !important;
       box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
@@ -163,24 +84,7 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
       color: #444 !important;
       background: #fff !important;
     }
-    .leaflet-control-zoom a:hover { background: #f5f5f5 !important; }
-    .leaflet-control-attribution {
-      font: 10px/1.2 system-ui, sans-serif;
-      background: rgba(255,255,255,0.8) !important;
-    }
-    /* Popup styling */
-    .leaflet-popup-content-wrapper {
-      border-radius: 12px !important;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
-      padding: 0 !important;
-    }
-    .leaflet-popup-content {
-      margin: 12px 16px !important;
-      font-size: 13px;
-      font-weight: 600;
-      color: #1a1a2e;
-    }
-    /* Marker base */
+    .leaflet-control-attribution { display: none !important; }
     .gmap-marker {
       display: flex;
       align-items: center;
@@ -190,26 +94,24 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
       box-shadow: 0 3px 14px rgba(0,0,0,0.35);
       border: 3px solid white;
       cursor: pointer;
+      transition: transform 0.2s ease;
     }
     .gmap-marker-inner {
       transform: rotate(45deg);
       font-size: 18px;
       line-height: 1;
     }
-    /* Pin variants */
     .pickup-pin  { width: 40px; height: 40px; background: #34C759; }
     .drop-pin    { width: 40px; height: 40px; background: #FF3B30; }
     .driver-pin  { width: 44px; height: 44px; background: #007AFF; border-color: #fff; box-shadow: 0 3px 18px rgba(0,122,255,0.5); }
     .stop-pin    { width: 36px; height: 36px; background: #FF9500; }
     .nearby-pin  { width: 32px; height: 32px; background: #32ADE6; border-width: 2px; }
-    /* User dot */
     .user-dot-outer {
       width: 20px; height: 20px;
       border-radius: 50%;
       background: rgba(0, 122, 255, 0.25);
       border: 2px solid rgba(0, 122, 255, 0.5);
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 0 6px rgba(0, 122, 255, 0.12);
       animation: pulse 2s infinite;
     }
     .user-dot-inner {
@@ -227,37 +129,25 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
 <body>
   <div id="map"></div>
   <script>
-    const map = L.map('map', {
-      zoomControl: true,
-      zoomSnap: 0.5,
-      zoomDelta: 0.5,
-      wheelPxPerZoomLevel: 80,
-    }).setView([${centerLat}, ${centerLng}], 14);
+    let map = null;
+    let isInitialCameraSet = false;
 
-    // High-resolution OpenStreetMap tiles (100% free, zero API key required, zero watermark)
-    L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    // Persistent markers to prevent reload flicker
+    let userMarker = null;
+    let pickupMarker = null;
+    let dropMarker = null;
+    let driverMarker = null;
+    let stopMarkers = [];
+    let nearbyMarkersMap = {};
+    let activeRoutePolyline = null;
+    let activeRouteShadow = null;
+    let activeRouteBadge = null;
+    let alternativePolylines = [];
+    let alternativeBadges = [];
 
-    // Notify parent on map pan/zoom
-    map.on('moveend', function() {
-      const center = map.getCenter();
-      const bounds = map.getBounds();
-      window.parent.postMessage({
-        type: 'regionChange',
-        region: {
-          latitude: center.lat,
-          longitude: center.lng,
-          latitudeDelta: Math.abs(bounds.getNorth() - bounds.getSouth()),
-          longitudeDelta: Math.abs(bounds.getEast() - bounds.getWest()),
-        }
-      }, '*');
-    });
-
-    // Layer groups for easy re-render
-    let markersLayer = L.layerGroup().addTo(map);
-    let routeLayer   = L.layerGroup().addTo(map);
+    function sendToParent(msg) {
+      window.parent.postMessage(msg, '*');
+    }
 
     function makePin(cls, emoji) {
       return L.divIcon({
@@ -268,6 +158,7 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
         popupAnchor: [0, -44],
       });
     }
+
     function makeUserDot() {
       return L.divIcon({
         className: '',
@@ -276,6 +167,7 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
         iconAnchor: [10, 10],
       });
     }
+
     function makeNearbyPin(emoji) {
       return L.divIcon({
         className: '',
@@ -286,81 +178,275 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
       });
     }
 
-    function renderMap(data) {
-      markersLayer.clearLayers();
-      routeLayer.clearLayers();
+    map = L.map('map', {
+      zoomControl: true,
+      zoomSnap: 0.5,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 80,
+      attributionControl: false,
+    }).setView([${initLat}, ${initLng}], 14);
 
+    L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.on('moveend', function() {
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+      sendToParent({
+        type: 'regionChange',
+        region: {
+          latitude: center.lat,
+          longitude: center.lng,
+          latitudeDelta: Math.abs(bounds.getNorth() - bounds.getSouth()),
+          longitudeDelta: Math.abs(bounds.getEast() - bounds.getWest()),
+        }
+      });
+    });
+
+    map.on('click', function(e) {
+      sendToParent({
+        type: 'mapClick',
+        coordinate: { latitude: e.latlng.lat, longitude: e.latlng.lng }
+      });
+    });
+
+    function renderMap(data) {
+      if (!data || !map) return;
       const bounds = [];
 
-      // User location dot
-      if (data.userLocation) {
-        L.marker([data.userLocation.latitude, data.userLocation.longitude], { icon: makeUserDot(), zIndexOffset: 200 }).addTo(markersLayer);
-        bounds.push([data.userLocation.latitude, data.userLocation.longitude]);
+      // User location
+      if (data.userLocation && data.userLocation.latitude && data.userLocation.longitude) {
+        const latlng = [data.userLocation.latitude, data.userLocation.longitude];
+        bounds.push(latlng);
+        if (!userMarker) {
+          userMarker = L.marker(latlng, { icon: makeUserDot(), zIndexOffset: 200 }).addTo(map);
+        } else {
+          userMarker.setLatLng(latlng);
+        }
+      } else if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
       }
 
       // Pickup
-      if (data.pickupLocation) {
-        L.marker([data.pickupLocation.latitude, data.pickupLocation.longitude], { icon: makePin('pickup-pin', '🧍'), zIndexOffset: 300 })
-          .addTo(markersLayer).bindPopup('<b>Pickup Location</b>');
-        bounds.push([data.pickupLocation.latitude, data.pickupLocation.longitude]);
+      if (data.pickupLocation && data.pickupLocation.latitude && data.pickupLocation.longitude) {
+        const latlng = [data.pickupLocation.latitude, data.pickupLocation.longitude];
+        bounds.push(latlng);
+        if (!pickupMarker) {
+          pickupMarker = L.marker(latlng, { icon: makePin('pickup-pin', '🧍'), zIndexOffset: 300 }).addTo(map);
+        } else {
+          pickupMarker.setLatLng(latlng);
+        }
+      } else if (pickupMarker) {
+        map.removeLayer(pickupMarker);
+        pickupMarker = null;
       }
 
       // Stops
-      (data.stopLocations || []).forEach((stop, i) => {
-        L.marker([stop.latitude, stop.longitude], { icon: makePin('stop-pin', (i + 1).toString()), zIndexOffset: 250 })
-          .addTo(markersLayer).bindPopup('<b>Stop ' + (i + 1) + '</b>');
-        bounds.push([stop.latitude, stop.longitude]);
+      const stops = data.stopLocations || [];
+      while (stopMarkers.length > stops.length) {
+        const m = stopMarkers.pop();
+        map.removeLayer(m);
+      }
+      stops.forEach((stop, i) => {
+        const latlng = [stop.latitude, stop.longitude];
+        bounds.push(latlng);
+        if (stopMarkers[i]) {
+          stopMarkers[i].setLatLng(latlng);
+        } else {
+          const m = L.marker(latlng, { icon: makePin('stop-pin', (i + 1).toString()), zIndexOffset: 250 }).addTo(map);
+          stopMarkers.push(m);
+        }
       });
 
       // Drop
-      if (data.dropLocation) {
-        L.marker([data.dropLocation.latitude, data.dropLocation.longitude], { icon: makePin('drop-pin', '🏁'), zIndexOffset: 300 })
-          .addTo(markersLayer).bindPopup('<b>Dropoff Location</b>');
-        bounds.push([data.dropLocation.latitude, data.dropLocation.longitude]);
+      if (data.dropLocation && data.dropLocation.latitude && data.dropLocation.longitude) {
+        const latlng = [data.dropLocation.latitude, data.dropLocation.longitude];
+        bounds.push(latlng);
+        if (!dropMarker) {
+          dropMarker = L.marker(latlng, { icon: makePin('drop-pin', '🏁'), zIndexOffset: 300 }).addTo(map);
+        } else {
+          dropMarker.setLatLng(latlng);
+        }
+      } else if (dropMarker) {
+        map.removeLayer(dropMarker);
+        dropMarker = null;
       }
 
-      // Active driver
-      if (data.driverLocation) {
-        L.marker([data.driverLocation.latitude, data.driverLocation.longitude], { icon: makePin('driver-pin', '🚗'), zIndexOffset: 500 })
-          .addTo(markersLayer).bindPopup('<b>Your Driver</b>');
-        bounds.push([data.driverLocation.latitude, data.driverLocation.longitude]);
+      // Live Driver Car Marker (Smooth movements without map reload)
+      if (data.driverLocation && data.driverLocation.latitude && data.driverLocation.longitude) {
+        const latlng = [data.driverLocation.latitude, data.driverLocation.longitude];
+        bounds.push(latlng);
+        if (!driverMarker) {
+          driverMarker = L.marker(latlng, { icon: makePin('driver-pin', '🚗'), zIndexOffset: 500 }).addTo(map);
+        } else {
+          driverMarker.setLatLng(latlng);
+        }
+      } else if (driverMarker) {
+        map.removeLayer(driverMarker);
+        driverMarker = null;
       }
 
       // Nearby drivers
-      (data.drivers || []).forEach(d => {
-        const emoji = { bike: '🛵', auto: '🛺', car: '🚗', suv: '🚙' }[d.vehicleType] || '🚗';
-        L.marker([d.latitude, d.longitude], { icon: makeNearbyPin(emoji), zIndexOffset: 100 })
-          .addTo(markersLayer).bindPopup('<b>Driver available</b>');
-        bounds.push([d.latitude, d.longitude]);
+      const currentDrivers = data.drivers || [];
+      const currentIds = new Set();
+      currentDrivers.forEach(d => {
+        currentIds.add(d.id);
+        const latlng = [d.latitude, d.longitude];
+        bounds.push(latlng);
+        if (nearbyMarkersMap[d.id]) {
+          nearbyMarkersMap[d.id].setLatLng(latlng);
+        } else {
+          const emoji = { bike: '🛵', auto: '🛺', car: '🚗', suv: '🚙' }[d.vehicleType] || '🚗';
+          const m = L.marker(latlng, { icon: makeNearbyPin(emoji), zIndexOffset: 100 }).addTo(map);
+          nearbyMarkersMap[d.id] = m;
+        }
+      });
+      Object.keys(nearbyMarkersMap).forEach(id => {
+        if (!currentIds.has(id)) {
+          map.removeLayer(nearbyMarkersMap[id]);
+          delete nearbyMarkersMap[id];
+        }
       });
 
-      // Route polyline (shadow + primary)
-      if (data.routeCoordinates && data.routeCoordinates.length > 1) {
-        const pts = data.routeCoordinates.map(c => [c.latitude, c.longitude]);
-        L.polyline(pts, { color: '#fff',     weight: 10, opacity: 0.9, lineJoin: 'round', lineCap: 'round' }).addTo(routeLayer);
-        L.polyline(pts, { color: '#1A73E8',  weight: 6,  opacity: 1.0, lineJoin: 'round', lineCap: 'round' }).addTo(routeLayer);
-      }
+      // Routes
+      renderRoutes(data, bounds);
 
-      // Region override
-      if (data.region) {
-        map.setView([data.region.latitude, data.region.longitude], 14);
-      } else if (bounds.length > 0) {
-        if (bounds.length === 1) {
-          map.setView(bounds[0], 15);
-        } else {
-          map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      // Initial Camera Fit (Only once on first load)
+      if (!isInitialCameraSet) {
+        isInitialCameraSet = true;
+        if (data.region) {
+          map.setView([data.region.latitude, data.region.longitude], 14);
+        } else if (bounds.length > 0) {
+          if (bounds.length === 1) {
+            map.setView(bounds[0], 15);
+          } else {
+            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+          }
         }
       }
     }
 
-    // postMessage bridge
+    function renderRoutes(data, bounds) {
+      alternativePolylines.forEach(p => map.removeLayer(p));
+      alternativePolylines = [];
+      alternativeBadges.forEach(b => map.removeLayer(b));
+      alternativeBadges = [];
+
+      if (data.alternativeRoutes && data.alternativeRoutes.length > 0) {
+        const routeColors = ['#1A73E8', '#F97316', '#8B5CF6'];
+        const activeIdx = data.activeRouteIndex ?? 0;
+
+        // Inactive routes
+        data.alternativeRoutes.forEach((route, idx) => {
+          if (idx === activeIdx) return;
+          if (!route.coordinates || route.coordinates.length < 2) return;
+          const pts = route.coordinates.map(c => [c.latitude, c.longitude]);
+          const poly = L.polyline(pts, {
+            color: '#94A3B8',
+            weight: 5,
+            opacity: 0.8,
+            lineJoin: 'round',
+            lineCap: 'round',
+            dashArray: '6 8'
+          }).addTo(map);
+
+          poly.on('click', function(e) {
+            L.DomEvent.stopPropagation(e);
+            sendToParent({ type: 'selectRoute', index: idx });
+          });
+          alternativePolylines.push(poly);
+
+          if (pts.length > 0) {
+            const mid = pts[Math.floor(pts.length / 2)];
+            const labelText = route.diffMin ? ('+' + route.diffMin + ' min') : (Math.round(route.durationMin) + ' min');
+            const badge = L.marker(mid, {
+              icon: L.divIcon({
+                className: '',
+                html: '<div style="background:#475569;color:#fff;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:pointer">' + labelText + '</div>',
+                iconAnchor: [30, 12],
+              }),
+              zIndexOffset: 40,
+            }).addTo(map);
+
+            badge.on('click', function(e) {
+              L.DomEvent.stopPropagation(e);
+              sendToParent({ type: 'selectRoute', index: idx });
+            });
+            alternativeBadges.push(badge);
+          }
+        });
+
+        // Active route
+        const activeRoute = data.alternativeRoutes[activeIdx];
+        if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 1) {
+          const pts = activeRoute.coordinates.map(c => [c.latitude, c.longitude]);
+          const color = routeColors[activeIdx] || '#1A73E8';
+
+          if (!activeRouteShadow) {
+            activeRouteShadow = L.polyline(pts, { color: '#FFFFFF', weight: 10, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }).addTo(map);
+          } else {
+            activeRouteShadow.setLatLngs(pts);
+          }
+
+          if (!activeRoutePolyline) {
+            activeRoutePolyline = L.polyline(pts, { color: color, weight: 6, opacity: 1.0, lineJoin: 'round', lineCap: 'round' }).addTo(map);
+          } else {
+            activeRoutePolyline.setStyle({ color: color });
+            activeRoutePolyline.setLatLngs(pts);
+          }
+
+          if (activeRouteBadge) {
+            map.removeLayer(activeRouteBadge);
+            activeRouteBadge = null;
+          }
+          const mid = pts[Math.floor(pts.length / 2)];
+          const mins = Math.round(activeRoute.durationMin);
+          const km = activeRoute.distanceKm.toFixed(1);
+          activeRouteBadge = L.marker(mid, {
+            icon: L.divIcon({
+              className: '',
+              html: '<div style="background:' + color + ';color:#fff;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.35)">' + mins + ' min · ' + km + ' km</div>',
+              iconAnchor: [50, 14],
+            }),
+            zIndexOffset: 60,
+          }).addTo(map);
+
+          pts.forEach(p => bounds.push(p));
+        }
+      } else if (data.routeCoordinates && data.routeCoordinates.length > 1) {
+        const pts = data.routeCoordinates.map(c => [c.latitude, c.longitude]);
+        if (!activeRouteShadow) {
+          activeRouteShadow = L.polyline(pts, { color: '#FFFFFF', weight: 10, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }).addTo(map);
+        } else {
+          activeRouteShadow.setLatLngs(pts);
+        }
+        if (!activeRoutePolyline) {
+          activeRoutePolyline = L.polyline(pts, { color: '#1A73E8', weight: 6, opacity: 1.0, lineJoin: 'round', lineCap: 'round' }).addTo(map);
+        } else {
+          activeRoutePolyline.setStyle({ color: '#1A73E8' });
+          activeRoutePolyline.setLatLngs(pts);
+        }
+        if (activeRouteBadge) {
+          map.removeLayer(activeRouteBadge);
+          activeRouteBadge = null;
+        }
+        pts.forEach(p => bounds.push(p));
+      } else {
+        if (activeRouteShadow) { map.removeLayer(activeRouteShadow); activeRouteShadow = null; }
+        if (activeRoutePolyline) { map.removeLayer(activeRoutePolyline); activeRoutePolyline = null; }
+        if (activeRouteBadge) { map.removeLayer(activeRouteBadge); activeRouteBadge = null; }
+      }
+    }
+
     window.addEventListener('message', function(e) {
       const msg = e.data;
       if (!msg || !msg.type) return;
       if (msg.type === 'update') {
         renderMap(msg);
       } else if (msg.type === 'flyTo') {
-        map.flyTo([msg.lat, msg.lng], msg.zoom, { duration: 1.2 });
+        map.flyTo([msg.lat, msg.lng], msg.zoom, { duration: 1.0 });
       } else if (msg.type === 'fitBounds') {
         if (msg.coords && msg.coords.length > 0) {
           const pts = msg.coords.map(c => [c.latitude, c.longitude]);
@@ -369,20 +455,119 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
       }
     });
 
-    // Initial render with inline data
-    renderMap({
-      pickupLocation:  ${JSON.stringify(pickupLocation ?? null)},
-      dropLocation:    ${JSON.stringify(dropLocation ?? null)},
-      stopLocations:   ${JSON.stringify(stopLocations ?? [])},
-      userLocation:    ${JSON.stringify(userLocation ?? null)},
-      driverLocation:  ${JSON.stringify(driverLocation ?? null)},
-      drivers:         ${JSON.stringify(drivers ?? [])},
-      routeCoordinates:${JSON.stringify(routeCoordinates ?? [])},
-      region:          ${JSON.stringify(region ?? null)},
-    });
+    sendToParent({ type: 'mapReady' });
   </script>
 </body>
 </html>`;
+}
+
+// ---------- Component ----------
+export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
+  (
+    {
+      initialRegion = {
+        latitude: 28.6139,
+        longitude: 77.209,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      },
+      region,
+      onRegionChangeComplete,
+      onPress,
+      onSelectRoute,
+      children,
+      routeCoordinates = [],
+      alternativeRoutes,
+      activeRouteIndex = 0,
+      pickupLocation,
+      dropLocation,
+      stopLocations = [],
+      userLocation,
+      driverLocation,
+      drivers = [],
+      showsUserLocation = false,
+      showsMyLocationButton = false,
+    },
+    ref
+  ) => {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const isReadyRef = useRef(false);
+
+    // Static HTML string: created ONCE, never triggers iframe reload
+    const leafletHtml = useMemo(() => {
+      return getLeafletWebHtml(initialRegion.latitude, initialRegion.longitude);
+    }, []);
+
+    useImperativeHandle(ref, () => ({
+      flyTo(center: [number, number], zoom = 14) {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'flyTo', lat: center[1], lng: center[0], zoom },
+          '*'
+        );
+      },
+      fitBounds(coords: LatLng[], padding = 80) {
+        if (!coords || coords.length === 0) return;
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'fitBounds', coords, padding },
+          '*'
+        );
+      },
+    }));
+
+    const sendUpdate = () => {
+      iframeRef.current?.contentWindow?.postMessage(
+        {
+          type: 'update',
+          pickupLocation,
+          dropLocation,
+          stopLocations,
+          userLocation: showsUserLocation ? (userLocation || pickupLocation) : (userLocation || null),
+          driverLocation,
+          drivers,
+          routeCoordinates,
+          alternativeRoutes: alternativeRoutes ?? null,
+          activeRouteIndex,
+          region,
+        },
+        '*'
+      );
+    };
+
+    // Re-send markers whenever props change
+    useEffect(() => {
+      sendUpdate();
+    }, [
+      pickupLocation,
+      dropLocation,
+      stopLocations,
+      userLocation,
+      driverLocation,
+      drivers,
+      routeCoordinates,
+      alternativeRoutes,
+      activeRouteIndex,
+      region,
+      showsUserLocation,
+    ]);
+
+    // Listen for messages posted from Leaflet map
+    useEffect(() => {
+      const handleMsg = (e: MessageEvent) => {
+        if (!e.data) return;
+        if (e.data.type === 'mapReady') {
+          isReadyRef.current = true;
+          sendUpdate();
+        } else if (e.data.type === 'regionChange' && onRegionChangeComplete) {
+          onRegionChangeComplete(e.data.region);
+        } else if (e.data.type === 'selectRoute' && onSelectRoute) {
+          onSelectRoute(e.data.index);
+        } else if (e.data.type === 'mapClick' && onPress) {
+          onPress({ nativeEvent: { coordinate: e.data.coordinate } });
+        }
+      };
+      window.addEventListener('message', handleMsg);
+      return () => window.removeEventListener('message', handleMsg);
+    }, [onRegionChangeComplete, onSelectRoute, onPress, pickupLocation, dropLocation, userLocation, driverLocation, routeCoordinates]);
 
     return (
       <View style={styles.container}>
@@ -393,6 +578,7 @@ export const MapContainer = forwardRef<MapContainerRef, MapContainerProps>(
           title="GoRide Map"
           sandbox="allow-scripts allow-same-origin"
         />
+        {children}
       </View>
     );
   }

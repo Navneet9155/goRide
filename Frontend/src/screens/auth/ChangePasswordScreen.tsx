@@ -16,6 +16,8 @@ import { FontSize, FontWeight, Spacing } from '../../constants/theme';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import * as authApi from '../../services/api/authApi';
+import { changeDriverPassword } from '../../services/api/driverApi';
+import { useAuth } from '../../context/AuthContext';
 import { parseApiError } from '../../utils/formatters';
 
 type Props = {
@@ -23,6 +25,7 @@ type Props = {
 };
 
 export default function ChangePasswordScreen({ navigation }: Props) {
+  const { role } = useAuth();
   const [form, setForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -51,10 +54,12 @@ export default function ChangePasswordScreen({ navigation }: Props) {
     if (!validate()) return;
     setLoading(true);
     try {
-      await authApi.changePassword({
+      const payload = {
         currentPassword: form.currentPassword,
         newPassword: form.newPassword,
-      });
+      };
+      if (role === 'driver') await changeDriverPassword(payload);
+      else await authApi.changePassword(payload);
       Alert.alert(
         'Password Changed',
         'Your password has been updated successfully.',

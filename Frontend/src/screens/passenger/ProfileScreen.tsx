@@ -81,7 +81,7 @@ export default function ProfileScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('RideHistory')}
           />
           <View style={styles.divider} />
-          <SettingRow label="Payment Methods" icon="Pay" isLink />
+          <SettingRow label="Payment Methods" icon="Pay" isLink onPress={() => navigation.navigate('PaymentMethods')} />
           <View style={styles.divider} />
           <SettingRow 
             label="Emergency Contacts" 
@@ -90,7 +90,9 @@ export default function ProfileScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('EmergencyContacts')}
           />
           <View style={styles.divider} />
-          <SettingRow label="Help & Support" icon="Help" isLink />
+          <SettingRow label="Help & Support" icon="Help" isLink onPress={() => navigation.navigate('HelpCenter')} />
+          <View style={styles.divider} />
+          <SettingRow label="Terms & Conditions" icon="Terms" isLink onPress={() => navigation.navigate('Terms')} />
           <View style={styles.divider} />
           <SettingRow label="Change Password" icon="Lock" isLink onPress={() => navigation.navigate('ChangePassword')} />
         </View>

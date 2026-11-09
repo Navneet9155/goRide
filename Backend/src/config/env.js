@@ -1,4 +1,6 @@
 require("dotenv").config();
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
 
 const NODE_ENV = process.env.NODE_ENV || "development";
 const INSECURE_DEV_JWT_SECRET = "dev_jwt_secret_change_me";
@@ -45,6 +47,15 @@ module.exports = {
   NOMINATIM_BASE_URL: process.env.NOMINATIM_BASE_URL || "https://nominatim.openstreetmap.org",
   OSRM_BASE_URL: process.env.OSRM_BASE_URL || "http://router.project-osrm.org",
 
+  // Free place search APIs (optional — Nominatim used as fallback when absent)
+  // LocationIQ: https://locationiq.com  — free 5,000 req/day, great India accuracy
+  LOCATIONIQ_KEY: process.env.LOCATIONIQ_KEY || "",
+  // Mapbox: https://mapbox.com          — free 100,000 req/month, fuzzy matching
+  MAPBOX_KEY: process.env.MAPBOX_KEY || "",
+
+  // Speech-to-Text APIs (Groq Whisper is free: https://console.groq.com)
+  GROQ_API_KEY: process.env.GROQ_API_KEY || "",
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
 
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
   STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || "",
@@ -78,4 +89,11 @@ module.exports = {
   TWILIO_API_KEY_SID: process.env.TWILIO_API_KEY_SID || "",
   TWILIO_API_KEY_SECRET: process.env.TWILIO_API_KEY_SECRET || "",
   TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "",
+  EVOLUTION_API_URL: process.env.EVOLUTION_API_URL || "",
+  EVOLUTION_API_KEY: process.env.EVOLUTION_API_KEY || "",
+  EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE || "",
+  GAMMU_SMS_ENABLED: process.env.GAMMU_SMS_ENABLED === "true",
+  GAMMU_SMS_INJECT_COMMAND: process.env.GAMMU_SMS_INJECT_COMMAND || "gammu-smsd-inject",
+  OVERPASS_API_URL: process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter",
+  POLICE_STATION_SEARCH_RADIUS_METRES: Number(process.env.POLICE_STATION_SEARCH_RADIUS_METRES) || 15000,
 };

@@ -5,8 +5,8 @@ export const Spacing = {
   lg: 16,
   xl: 20,
   xxl: 24,
-  xxxl: 28,
-  huge: 32,
+  xxxl: 32,
+  huge: 40,
 };
 
 export const FontSize = {
@@ -16,7 +16,7 @@ export const FontSize = {
   lg: 18,
   xl: 20,
   xxl: 24,
-  display: 28,
+  display: 32,
 };
 
 export const FontWeight = {
@@ -29,11 +29,11 @@ export const FontWeight = {
 };
 
 export const BorderRadius = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
+  xs: 6,
+  sm: 10,
+  md: 14,
+  lg: 18,
   xl: 24,
-  xxl: 32,
+  xxl: 28,
   full: 9999,
 };

@@ -9,6 +9,7 @@ import {
   Platform,
   Linking,
   Dimensions,
+  Keyboard,
 } from 'react-native';
 import { MapContainer } from '../../components/map/MapContainer';
 import { fetchOSRMRouteThroughPoints, LatLng } from '../../services/maps/osrmService';
@@ -72,18 +73,19 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   const { rideId } = route.params;
   const { currentRide, setCurrentRide, driverLocation, setDriverLocation, clearRide } = useRide();
   const mapRef = useRef<MapContainerRef>(null);
-  
+
   const [loading, setLoading] = useState(false);
   const [otpInput, setOtpInput] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const { showSosModal, setShowSosModal, sosLoading, handleConfirmSos } = useSosEmergency({
     rideId,
     getLocation: () =>
       driverLocation ||
       (currentRide?.pickupLocation
         ? {
-            latitude: currentRide.pickupLocation.coordinates[1],
-            longitude: currentRide.pickupLocation.coordinates[0],
-          }
+          latitude: currentRide.pickupLocation.coordinates[1],
+          longitude: currentRide.pickupLocation.coordinates[0],
+        }
         : null),
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -97,6 +99,22 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   }, [currentRide]);
 
   const hasHandledTerminal = useRef(false);
+
+  // Keep the action sheet above Android's numeric keyboard.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', event => setKeyboardHeight(event.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Keep the numeric keyboard closed until the driver has actually arrived.
+  // This hook intentionally runs even while ride details are loading.
+  useEffect(() => {
+    if (currentRide && currentRide.rideStatus !== RIDE_STATUS.DRIVER_ARRIVED) {
+      setOtpInput('');
+      Keyboard.dismiss();
+    }
+  }, [currentRide?.rideStatus]);
 
   // ── Periodic Status Recovery Polling (Socket Fallback) ────────
   useEffect(() => {
@@ -155,7 +173,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
           },
           pos => handleLocation(pos.coords.latitude, pos.coords.longitude)
         );
-      } catch (e) {}
+      } catch (e) { }
     }
 
     async function handleLocation(lat: number, lng: number) {
@@ -163,7 +181,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       try {
         await updateDriverLocation(lat, lng);
         socketService.emitLocationUpdate(lat, lng, rideId);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     startTracking();
@@ -192,19 +210,25 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
     fetchOSRMRouteThroughPoints(routePoints).then(res => setRouteCoords(res.coordinates));
   }, [currentRide?.pickupLocation, currentRide?.dropLocation, currentRide?.rideStatus, driverLocation?.latitude, driverLocation?.longitude]);
 
+  const prevRideStatusRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!currentRide) return;
-    
-    // Fit map
-    const coords = [];
-    if (driverLocation) coords.push(driverLocation);
-    if (currentRide.pickupLocation) coords.push({ latitude: currentRide.pickupLocation.coordinates[1], longitude: currentRide.pickupLocation.coordinates[0] });
-    if (currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED) {
-      (currentRide.stops || []).forEach(stop => coords.push({ latitude: stop.location.coordinates[1], longitude: stop.location.coordinates[0] }));
-      if (currentRide.dropLocation) coords.push({ latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] });
+
+    const isStatusChanged = prevRideStatusRef.current !== currentRide.rideStatus;
+    if (isStatusChanged) {
+      prevRideStatusRef.current = currentRide.rideStatus;
+      const coords = [];
+      if (driverLocation) coords.push(driverLocation);
+      if (currentRide.pickupLocation) coords.push({ latitude: currentRide.pickupLocation.coordinates[1], longitude: currentRide.pickupLocation.coordinates[0] });
+      if (currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED) {
+        (currentRide.stops || []).forEach(stop => coords.push({ latitude: stop.location.coordinates[1], longitude: stop.location.coordinates[0] }));
+        if (currentRide.dropLocation) coords.push({ latitude: currentRide.dropLocation.coordinates[1], longitude: currentRide.dropLocation.coordinates[0] });
+      }
+      if (coords.length > 0) {
+        mapRef.current?.fitBounds(coords, 80);
+      }
     }
-    
-    mapRef.current?.fitBounds(coords, 80);
 
     // Handle terminal ride statuses (passenger cancellation, remote cancellation, completion)
     if (hasHandledTerminal.current) return;
@@ -226,7 +250,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       clearRide();
       navigation.replace('DriverTabs');
     }
-  }, [currentRide?.rideStatus, driverLocation]);
+  }, [currentRide?.rideStatus]);
 
   // ── Payment Updated Socket Listener ───────────────────────
   useEffect(() => {
@@ -269,7 +293,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
       const res = await updateRideStatus(rideId, status);
       hasHandledTerminal.current = true;
       setCurrentRide(res);
-      
+
       if (status === RIDE_STATUS.CANCELLED_BY_DRIVER) {
         clearRide();
         navigation.replace('DriverTabs');
@@ -338,10 +362,10 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
 
   function handleNavigateToMap() {
     if (!currentRide) return;
-    const dest = currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED 
+    const dest = currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED
       ? `${currentRide.dropLocation.coordinates[1]},${currentRide.dropLocation.coordinates[0]}`
       : `${currentRide.pickupLocation.coordinates[1]},${currentRide.pickupLocation.coordinates[0]}`;
-    
+
     const url = Platform.select({
       ios: `maps:0,0?q=${dest}`,
       android: `geo:0,0?q=${dest}`,
@@ -365,6 +389,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   useEffect(() => {
     const handleSosTriggered = (payload: SosTriggeredPayload) => {
       if (!payload?.rideId || payload.rideId !== rideId) return;
+      if (payload.triggeredBy && payload.triggeredBy !== 'driver') return;
 
       const sosIdentifier = payload.sosId || `${payload.rideId}_${Date.now()}`;
       if (handledSosIds.current.has(sosIdentifier)) return;
@@ -413,8 +438,6 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   const passenger = typeof currentRide.passenger === 'object' ? currentRide.passenger : null;
   const isStarted = currentRide.rideStatus === RIDE_STATUS.RIDE_STARTED;
   const canEnterOtp = [
-    RIDE_STATUS.DRIVER_ASSIGNED,
-    RIDE_STATUS.DRIVER_ARRIVING,
     RIDE_STATUS.DRIVER_ARRIVED,
   ].includes(currentRide.rideStatus as RIDE_STATUS);
 
@@ -434,7 +457,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
+
       <MapContainer
         ref={mapRef}
         initialRegion={{
@@ -484,7 +507,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
         </View>
       )}
 
-      <View style={styles.bottomSheet}>
+      <View style={[styles.bottomSheet, keyboardHeight > 0 && { bottom: keyboardHeight }]}>
         {/* Passenger Info */}
         <View style={styles.passengerBox}>
           <View style={styles.passengerInfo}>
@@ -495,7 +518,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
               </Text>
             </View>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.callBtn}
             onPress={() => passenger?.phone && Linking.openURL(`tel:${passenger.phone}`)}>
             <Text style={styles.callIcon}>📞</Text>
@@ -573,7 +596,7 @@ export default function ActiveRideScreen({ navigation, route }: Props) {
 
           {/* Cancel option if not started */}
           {!isStarted && currentRide.rideStatus !== RIDE_STATUS.RIDE_COMPLETED && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.cancelLink}
               onPress={() => {
                 if (Platform.OS === 'web') {
@@ -807,3 +830,4 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
   },
 });
+

@@ -189,6 +189,7 @@ export interface PaymentUpdatedPayload {
 export interface SosTriggeredPayload {
   rideId: string;
   sosId: string;
+  triggeredBy?: 'passenger' | 'driver';
 
   location?:
   | LocationPoint

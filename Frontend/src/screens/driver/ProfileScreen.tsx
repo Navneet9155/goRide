@@ -87,9 +87,9 @@ export default function ProfileScreen({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SUPPORT</Text>
           <View style={styles.card}>
-            <SettingRow label="Driver Help Center" isLink />
+            <SettingRow label="Driver Help Center" isLink onPress={() => navigation.navigate('HelpCenter')} />
             <View style={styles.divider} />
-            <SettingRow label="Terms & Conditions" isLink />
+            <SettingRow label="Terms & Conditions" isLink onPress={() => navigation.navigate('Terms')} />
           </View>
         </View>
 

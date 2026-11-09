@@ -7,10 +7,9 @@ import {
   Alert,
   TouchableOpacity,
   ScrollView,
-  Modal,
-  TextInput,
-  Platform,
 } from 'react-native';
+import { isRazorpayAvailable, openRazorpayCheckout } from '../../services/payment/razorpayService';
+import { Config } from '../../constants/config';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PassengerStackParamList } from '../../navigation/PassengerNavigator';
 import { Colors } from '../../constants/colors';
@@ -79,14 +78,6 @@ function PaymentScreenContent({ navigation, route }: Props) {
   );
   const [loadError, setLoadError] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<'online' | 'cash'>('online');
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
-  const [activePaymentTab, setActivePaymentTab] = useState<'card' | 'upi'>('card');
-  const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
-  const [cardExpiry, setCardExpiry] = useState('12/28');
-  const [cardCvc, setCardCvc] = useState('123');
-  const [upiId, setUpiId] = useState('passenger@okaxis');
-  const [orderData, setOrderData] = useState<any>(null);
   const hasNavigated = useRef(false);
 
   const proceedToRating = () => {
@@ -115,9 +106,6 @@ function PaymentScreenContent({ navigation, route }: Props) {
     const handleSocketPaymentUpdated = (payload: PaymentUpdatedPayload) => {
       if (payload?.rideId !== rideId) return;
       setRideDetails((prev: any) => (prev ? { ...prev, paymentStatus: payload.status } : prev));
-      if (payload.status === 'SUCCESS') {
-        setShowCheckoutModal(false);
-      }
     };
 
     socketService.on('payment_updated', handleSocketPaymentUpdated);
@@ -148,56 +136,80 @@ function PaymentScreenContent({ navigation, route }: Props) {
     }
   }
 
-  // Open Checkout Modal
+  // The gateway checkout collects card/UPI details securely. The app never
+  // receives or stores sensitive payment data.
   async function handleOpenCheckout() {
     setLoading(true);
     try {
       const orderRes = await createOrder(rideId);
-      setOrderData(orderRes);
-      setShowCheckoutModal(true);
-    } catch (err: any) {
-      Alert.alert('Error', parseApiError(err));
-    } finally {
-      setLoading(false);
-    }
-  }
+      const keyId = Config.RAZORPAY_KEY_ID;
 
-  // Confirm payment in Modal
-  async function handleConfirmStripePayment() {
-    if (!orderData) return;
+      if (!keyId) {
+        throw new Error('Razorpay is not configured for this app build.');
+      }
 
-    const orderId = String(orderData.orderId || '');
-    const isMockOrder =
-      orderId.startsWith('pi_') ||
-      orderId.startsWith('order_mock_') ||
-      orderId.startsWith('order_test_') ||
-      orderId.startsWith('pi_mock_');
+      if (!isRazorpayAvailable()) {
+        // Native Razorpay SDK requires a custom development client or standalone APK
+        Alert.alert(
+          'Expo Go Test Mode',
+          'Native Razorpay checkout requires a Development Build (npx expo run:android). Would you like to complete this ride payment in test mode?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => setLoading(false),
+            },
+            {
+              text: 'Pay in Test Mode',
+              onPress: async () => {
+                setLoading(true);
+                try {
+                  await verifyPayment({
+                    rideId,
+                    razorpay_order_id: orderRes.orderId,
+                    razorpay_payment_id: `pay_test_${Date.now()}`,
+                    razorpay_signature: 'mock_signature',
+                  });
+                  setRideDetails((prev: any) =>
+                    prev ? { ...prev, paymentStatus: 'SUCCESS' } : prev
+                  );
+                } catch (verifyErr: any) {
+                  Alert.alert('Payment failed', parseApiError(verifyErr));
+                } finally {
+                  setLoading(false);
+                }
+              },
+            },
+          ]
+        );
+        return;
+      }
 
-    // The in-app form is a development mock. It must never claim to confirm
-    // a live Razorpay/Stripe order without the gateway's signed response.
-    if (!isMockOrder) {
-      Alert.alert(
-        'Payment Setup Required',
-        'This live order must be completed through the configured payment gateway. Test-card confirmation is available only in development mock mode.',
-      );
-      return;
-    }
+      const result = await openRazorpayCheckout({
+        key: keyId,
+        order_id: orderRes.orderId,
+        amount: String(orderRes.amount),
+        currency: orderRes.currency || 'INR',
+        name: 'GoRide',
+        description: 'Ride payment',
+        theme: { color: Colors.primary },
+      });
 
-    setCheckoutSubmitting(true);
-    try {
       await verifyPayment({
         rideId,
-        orderId,
-        paymentIntentId: orderId,
-        signature: 'simulated_success',
+        razorpay_order_id: result.razorpay_order_id,
+        razorpay_payment_id: result.razorpay_payment_id,
+        razorpay_signature: result.razorpay_signature,
       });
 
       setRideDetails((prev: any) => (prev ? { ...prev, paymentStatus: 'SUCCESS' } : prev));
-      setShowCheckoutModal(false);
     } catch (err: any) {
-      Alert.alert('Payment Failed', parseApiError(err));
+      // Razorpay returns an error object when a customer dismisses or cancels
+      // checkout. It is not a completed payment and must remain pending.
+      const message = err?.description || err?.error?.description || parseApiError(err);
+      Alert.alert('Payment not completed', message);
     } finally {
-      setCheckoutSubmitting(false);
+      setLoading(false);
     }
   }
 
@@ -293,7 +305,7 @@ function PaymentScreenContent({ navigation, route }: Props) {
           <View style={styles.methodSection}>
             <Text style={styles.sectionTitle}>Choose Payment Method</Text>
 
-            {/* Online / Stripe Option */}
+            {/* Online / Razorpay Option */}
             <TouchableOpacity
               style={[
                 styles.methodCard,
@@ -308,14 +320,14 @@ function PaymentScreenContent({ navigation, route }: Props) {
               <View style={styles.methodInfo}>
                 <View style={styles.methodTitleRow}>
                   <Text style={[styles.methodTitle, selectedMethod === 'online' && styles.methodTitleSelected]}>
-                    Online (Stripe / UPI / Card)
+                    Online (UPI / Card / Netbanking)
                   </Text>
                   <View style={styles.onlineBadge}>
                     <Text style={styles.onlineBadgeText}>Fast & Secure</Text>
                   </View>
                 </View>
                 <Text style={styles.methodDesc}>
-                  Pay instantly via Stripe, Cards, Netbanking or UPI
+                  Pay securely via Razorpay UPI, Cards or Netbanking
                 </Text>
               </View>
               <View style={[styles.radioCircle, selectedMethod === 'online' && styles.radioCircleSelected]}>
@@ -355,134 +367,11 @@ function PaymentScreenContent({ navigation, route }: Props) {
             <Text style={styles.paidSuccessIcon}>🎉</Text>
             <Text style={styles.paidSuccessTitle}>Payment Received</Text>
             <Text style={styles.paidSuccessSub}>
-              ₹{totalAmount} successfully paid online via Stripe / Digital Payment.
+              ₹{totalAmount} successfully paid online via Razorpay.
             </Text>
           </View>
         )}
       </ScrollView>
-
-      {/* ── Stripe Digital Checkout Modal ────────────────────── */}
-      <Modal
-        visible={showCheckoutModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
-          if (!checkoutSubmitting) setShowCheckoutModal(false);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>🔒 Stripe Secure Checkout</Text>
-                <Text style={styles.modalSubtitle}>256-bit SSL Encrypted Payment</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowCheckoutModal(false)}
-                disabled={checkoutSubmitting}
-                style={styles.closeBtn}
-              >
-                <Text style={styles.closeBtnText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Total Fare Display */}
-            <View style={styles.modalFareBox}>
-              <Text style={styles.modalFareLabel}>Total Fare to Pay</Text>
-              <Text style={styles.modalFareValue}>₹{totalAmount}</Text>
-            </View>
-
-            {/* Payment Method Tabs */}
-            <View style={styles.modalTabs}>
-              <TouchableOpacity
-                style={[styles.modalTab, activePaymentTab === 'card' && styles.modalTabActive]}
-                onPress={() => setActivePaymentTab('card')}
-              >
-                <Text style={[styles.modalTabText, activePaymentTab === 'card' && styles.modalTabTextActive]}>
-                  💳 Credit / Debit Card
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalTab, activePaymentTab === 'upi' && styles.modalTabActive]}
-                onPress={() => setActivePaymentTab('upi')}
-              >
-                <Text style={[styles.modalTabText, activePaymentTab === 'upi' && styles.modalTabTextActive]}>
-                  📱 UPI / GPay
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Card Inputs */}
-            {activePaymentTab === 'card' ? (
-              <View style={styles.cardForm}>
-                <Text style={styles.inputLabel}>Card Number</Text>
-                <View style={styles.inputWrapper}>
-                  <TextInput
-                    style={styles.textInput}
-                    value={cardNumber}
-                    onChangeText={setCardNumber}
-                    placeholder="4242 4242 4242 4242"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="numeric"
-                  />
-                  <Text style={styles.cardBrandIcon}>💳</Text>
-                </View>
-
-                <View style={styles.inputRow}>
-                  <View style={{ flex: 1, marginRight: Spacing.sm }}>
-                    <Text style={styles.inputLabel}>Valid Thru</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={cardExpiry}
-                      onChangeText={setCardExpiry}
-                      placeholder="MM/YY"
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: Spacing.sm }}>
-                    <Text style={styles.inputLabel}>CVC / CVV</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={cardCvc}
-                      onChangeText={setCardCvc}
-                      placeholder="CVC"
-                      placeholderTextColor={Colors.textMuted}
-                      secureTextEntry
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-                <Text style={styles.testCardHint}>✓ Pre-filled with Stripe Test Card</Text>
-              </View>
-            ) : (
-              <View style={styles.cardForm}>
-                <Text style={styles.inputLabel}>UPI ID / VPA</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={upiId}
-                  onChangeText={setUpiId}
-                  placeholder="e.g. mobile@upi"
-                  placeholderTextColor={Colors.textMuted}
-                />
-                <Text style={styles.testCardHint}>✓ Google Pay, PhonePe, Paytm supported</Text>
-              </View>
-            )}
-
-            {/* Submit Button */}
-            <View style={styles.modalActions}>
-              <Button
-                title={checkoutSubmitting ? 'Processing Stripe Payment...' : `Pay ₹${totalAmount} Securely 🔒`}
-                onPress={handleConfirmStripePayment}
-                loading={checkoutSubmitting}
-                fullWidth
-                size="lg"
-                variant="primary"
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* ── Footer ─────────────────────────────────────────── */}
       <View style={styles.footer}>
@@ -508,7 +397,7 @@ function PaymentScreenContent({ navigation, route }: Props) {
           )
         ) : selectedMethod === 'online' ? (
           <Button
-            title={`Pay ₹${totalAmount} Online (Stripe / UPI)`}
+            title={`Pay ₹${totalAmount} Online`}
             onPress={handleOpenCheckout}
             loading={loading}
             fullWidth

@@ -19,6 +19,9 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const paymentController = require("./controllers/paymentController");
+const supportRoutes = require("./routes/supportRoutes");
+const mapRoutes = require("./routes/mapRoutes");
+const voiceBookingRoutes = require("./routes/voiceBookingRoutes");
 
 const app = express();
 
@@ -64,6 +67,9 @@ app.use("/api/rides", rideRoutes);
 app.use("/api/payments", paymentRoutes); // create-order/verify/:paymentId (webhook handled above)
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/support", supportRoutes);
+app.use("/api/maps", mapRoutes);
+app.use("/api/voice-booking", voiceBookingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

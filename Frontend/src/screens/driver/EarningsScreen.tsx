@@ -17,6 +17,7 @@ import { getTodayEarnings } from '../../services/api/driverApi';
 import { Ride } from '../../types/ride.types';
 import { RIDE_STATUS } from '../../constants/enums';
 import { parseApiError, formatFare, formatDateTime } from '../../utils/formatters';
+import Button from '../../components/common/Button';
 
 type Props = NativeStackScreenProps<DriverStackParamList, 'Earnings'>;
 
@@ -85,6 +86,7 @@ export default function EarningsScreen({ navigation }: Props) {
               <Text style={styles.statValue}>{todayEarnings?.ridesCount || 0}</Text>
             </View>
           </View>
+          <Button title="Open wallet" variant="outline" onPress={() => navigation.navigate('Wallet')} style={styles.walletButton} />
         </View>
 
         {/* Total Summary */}
@@ -180,6 +182,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
   },
+  walletButton: { marginTop: Spacing.lg, width: '100%', backgroundColor: Colors.white },
   statItem: {
     flex: 1,
     alignItems: 'center',

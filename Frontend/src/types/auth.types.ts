@@ -7,6 +7,9 @@ export interface Passenger {
   rating?: number;
   ratingCount?: number;
   gender?: string;
+  preferredPaymentMethod?: 'cash' | 'online';
+  safetyPreferences?: { shareTripStatus?: boolean; sosConfirmation?: boolean };
+  preferences?: { language?: string; notificationsEnabled?: boolean; communicationPreference?: 'push' | 'sms' | 'email' };
   isOnline?: boolean;
   vehicleType?: string;
   vehicleModel?: string;
@@ -33,6 +36,22 @@ export interface Driver {
   vehicleModel: string;
   vehicleNumber: string;
   licenseNumber: string;
+  licenseExpiryDate?: string;
+  vehicleMake?: string;
+  vehicleColor?: string;
+  vehicleRegistrationDetails?: string;
+  documents?: {
+    drivingLicense?: string;
+    registrationCertificate?: string;
+    insurance?: string;
+    permit?: string;
+    pollutionCertificate?: string;
+    other?: string;
+    verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  };
+  emergencyContacts?: Array<{ name: string; phone: string; email?: string }>;
+  safetyPreferences?: { shareTripStatus?: boolean; sosConfirmation?: boolean };
+  preferences?: { language?: string; notificationsEnabled?: boolean; communicationPreference?: 'push' | 'sms' | 'email' };
   isOnline: boolean;
   isAvailable: boolean;
   currentLocation?: {

@@ -11,6 +11,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { Colors } from '../../constants/colors';
@@ -33,7 +34,7 @@ export default function LoginScreen({ navigation, route }: Props) {
 
   const isDriver = role === 'driver';
   const accentColor = isDriver ? Colors.secondary : Colors.primary;
-  const gradientColors = isDriver ? ['#00D4B4', '#00B89C'] : Colors.gradientPrimary;
+  const gradientColors = isDriver ? Colors.gradientSuccess : Colors.gradientPrimary;
 
   function validate(): boolean {
     const newErrors: typeof errors = {};
@@ -66,7 +67,7 @@ export default function LoginScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -77,12 +78,11 @@ export default function LoginScreen({ navigation, route }: Props) {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-              <Text style={styles.backIcon}>←</Text>
+              <Ionicons name="arrow-back" size={21} color={Colors.textPrimary} />
             </TouchableOpacity>
             <LinearGradient colors={gradientColors as any} style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {isDriver ? '🏍 Driver' : '🧳 Passenger'}
-              </Text>
+              <Ionicons name={isDriver ? 'speedometer-outline' : 'car-outline'} size={16} color={Colors.white} />
+              <Text style={styles.badgeText}>{isDriver ? 'Driver' : 'Passenger'}</Text>
             </LinearGradient>
           </View>
 
@@ -181,6 +181,9 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   badgeText: {
     color: Colors.white,

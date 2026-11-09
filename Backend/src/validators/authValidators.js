@@ -29,6 +29,9 @@ const updateProfileSchema = z.object({
   name: z.string().min(2).max(60).optional(),
   gender: z.enum(Object.values(GENDER)).optional(),
   profileImage: z.string().url().optional(),
+  preferredPaymentMethod: z.enum(["cash", "online"]).optional(),
+  safetyPreferences: z.object({ shareTripStatus: z.boolean().optional(), sosConfirmation: z.boolean().optional() }).optional(),
+  preferences: z.object({ language: z.string().max(10).optional(), notificationsEnabled: z.boolean().optional(), communicationPreference: z.enum(["push", "sms", "email"]).optional() }).optional(),
 });
 
 const changePasswordSchema = z.object({

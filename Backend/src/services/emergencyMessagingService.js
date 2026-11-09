@@ -1,4 +1,7 @@
 const logger = require("../utils/logger");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 
 /**
  * Formats emergency text payload for Parents / Emergency Contacts
@@ -17,8 +20,11 @@ function formatParentsEmergencyMessage({
   latitude,
   longitude,
   mapsUrl,
+  nearestPoliceStation,
+  triggeredBy = "passenger",
   triggeredAt = new Date(),
 }) {
+  const personLabel = triggeredBy === "driver" ? "driver" : "passenger";
   const formattedTime = new Date(triggeredAt).toLocaleTimeString("en-IN", {
     timeZone: "Asia/Kolkata",
     hour: "2-digit",
@@ -40,11 +46,13 @@ function formatParentsEmergencyMessage({
     `• Pickup: ${pickupAddress || "N/A"}\n` +
     `• Destination: ${dropAddress || "N/A"}\n\n` +
     `⚠️ *IMMEDIATE STEPS FOR PARENTS:*\n` +
-    `1. Call passenger immediately: tel:${passengerPhone}\n` +
+    `1. Call ${personLabel} immediately: tel:${passengerPhone}\n` +
     `2. If unreachable or danger suspected, contact Police immediately:\n` +
     `   • National Emergency Helpline: *112*\n` +
     `   • Police Control Room: *100*\n` +
-    `   • Women Safety Helpline: *1091*\n\n` +
+    `   • Women Safety Helpline: *1091*\n` +
+    (nearestPoliceStation ? `\n🚓 *Nearest mapped police station:* ${nearestPoliceStation.name} (${Math.round(nearestPoliceStation.distanceMetres / 100) / 10} km)${nearestPoliceStation.phone ? `, ${nearestPoliceStation.phone}` : ""}\n` : "") +
+    `\n` +
     `_Automated emergency message dispatched by GoRide Safety Shield._`
   );
 }
@@ -67,6 +75,7 @@ function formatPoliceDispatchMessage({
   latitude,
   longitude,
   mapsUrl,
+  nearestPoliceStation,
   triggeredAt = new Date(),
 }) {
   const formattedTime = new Date(triggeredAt).toLocaleString("en-IN", {
@@ -91,7 +100,9 @@ function formatPoliceDispatchMessage({
     `• Driver Phone: ${driverPhone || "N/A"}\n\n` +
     `🗺️ *Route:*\n` +
     `• Pickup: ${pickupAddress || "N/A"}\n` +
-    `• Destination: ${dropAddress || "N/A"}\n\n` +
+    `• Destination: ${dropAddress || "N/A"}\n` +
+    (nearestPoliceStation ? `• Nearest mapped police station: ${nearestPoliceStation.name} (${nearestPoliceStation.distanceMetres} m)\n` : "") +
+    `\n` +
     `ACTION: Emergency response unit / patrol dispatch alerted.`
   );
 }
@@ -103,6 +114,36 @@ function generateWhatsAppDeepLink(phone, message) {
   const cleanedPhone = String(phone).replace(/[^\d]/g, "");
   const encodedText = encodeURIComponent(message);
   return `https://wa.me/${cleanedPhone}?text=${encodedText}`;
+}
+
+function normalizeIndianPhone(phone) {
+  const digits = String(phone || "").replace(/[^\d]/g, "").slice(-10);
+  return digits.length === 10 ? `91${digits}` : null;
+}
+
+async function sendEvolutionWhatsApp(phone, message) {
+  const baseUrl = (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
+  const apiKey = (process.env.EVOLUTION_API_KEY || "").trim();
+  const instance = (process.env.EVOLUTION_INSTANCE || "").trim();
+  const number = normalizeIndianPhone(phone);
+  if (!baseUrl || !apiKey || !instance) return { success: false, reason: "EVOLUTION_INCOMPLETE" };
+  if (!number) return { success: false, reason: "INVALID_PHONE" };
+  try {
+    const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, { method: "POST", headers: { apikey: apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ number, options: { delay: 0, presence: "composing" }, textMessage: { text: message.slice(0, 3500) } }) });
+    const data = await response.json().catch(() => ({}));
+    return response.ok ? { success: true, data } : { success: false, reason: "EVOLUTION_REQUEST_FAILED", data };
+  } catch (error) { logger.error({ error: error.message }, "Evolution WhatsApp dispatch failed"); return { success: false, reason: "EVOLUTION_NETWORK_ERROR", error: error.message }; }
+}
+
+async function sendGammuSms(phone, message) {
+  if (process.env.GAMMU_SMS_ENABLED !== "true") return { success: false, reason: "GAMMU_DISABLED" };
+  const number = normalizeIndianPhone(phone);
+  if (!number) return { success: false, reason: "INVALID_PHONE" };
+  try {
+    const command = process.env.GAMMU_SMS_INJECT_COMMAND || "gammu-smsd-inject";
+    const { stdout, stderr } = await execFileAsync(command, ["TEXT", `+${number}`, "-text", message.slice(0, 1500)], { timeout: 15000, windowsHide: true });
+    return { success: true, stdout, stderr };
+  } catch (error) { logger.error({ error: error.message, phone: number }, "Gammu GSM SMS dispatch failed"); return { success: false, reason: "GAMMU_SEND_FAILED", error: error.message }; }
 }
 
 /**
@@ -215,9 +256,11 @@ async function sendEmergencyMessagingAlerts({
   passenger,
   driver,
   ride,
+  triggeredBy = "passenger",
   latitude,
   longitude,
   mapsUrl,
+  nearestPoliceStation,
   triggeredAt = new Date(),
 }) {
   const results = {
@@ -236,14 +279,15 @@ async function sendEmergencyMessagingAlerts({
   const dropAddress = ride?.dropAddress || "N/A";
 
   // 1. Dispatch to Parents / Emergency Contacts
-  const emergencyContacts = passenger?.emergencyContacts || [];
+  const emergencyOwner = triggeredBy === "driver" ? driver : passenger;
+  const emergencyContacts = emergencyOwner?.emergencyContacts || [];
   for (const contact of emergencyContacts) {
     if (!contact?.phone && !contact?.email) continue;
 
     const message = formatParentsEmergencyMessage({
       contactName: contact.name,
-      passengerName,
-      passengerPhone,
+      passengerName: triggeredBy === "driver" ? driverName : passengerName,
+      passengerPhone: triggeredBy === "driver" ? driverPhone : passengerPhone,
       driverName,
       driverPhone,
       vehicleNumber,
@@ -253,6 +297,8 @@ async function sendEmergencyMessagingAlerts({
       latitude,
       longitude,
       mapsUrl,
+      nearestPoliceStation,
+      triggeredBy,
       triggeredAt,
     });
 
@@ -270,10 +316,12 @@ async function sendEmergencyMessagingAlerts({
       `🚨 [EMERGENCY DISPATCH TO PARENTS] SMS/WhatsApp payload generated for ${contact.name} (${contact.phone || "No phone"})`
     );
 
-    // Send real SMS via Twilio or Fast2SMS
+    // Use the local GSM modem and Evolution WhatsApp first; cloud SMS remains a fallback.
     let smsResult = null;
+    let whatsappResult = null;
     if (contact.phone) {
-      smsResult = await sendTwilioSms(contact.phone, message);
+      [smsResult, whatsappResult] = await Promise.all([sendGammuSms(contact.phone, message), sendEvolutionWhatsApp(contact.phone, message)]);
+      if (!smsResult.success && smsResult.reason === "GAMMU_DISABLED") smsResult = await sendTwilioSms(contact.phone, message);
       if (!smsResult.success && smsResult.reason === "TWILIO_INCOMPLETE") {
         smsResult = await sendFast2SMSSms(contact.phone, message);
       }
@@ -294,6 +342,7 @@ async function sendEmergencyMessagingAlerts({
       relation: contact.relation,
       status: smsResult?.success ? "SENT" : "SIMULATED",
       whatsAppUrl,
+      whatsapp: whatsappResult,
       sms: smsResult,
       preview: message,
     });
@@ -315,6 +364,7 @@ async function sendEmergencyMessagingAlerts({
     latitude,
     longitude,
     mapsUrl,
+    nearestPoliceStation,
     triggeredAt,
   });
 
@@ -329,10 +379,12 @@ async function sendEmergencyMessagingAlerts({
     `🚓 [POLICE CONTROL ROOM DISPATCH] SMS/WhatsApp telemetry sent to ${policePhone}`
   );
 
-  // Send real SMS to Police Dispatch phone via Twilio or Fast2SMS
+  // Use local GSM modem and Evolution WhatsApp for the dispatch contact too.
   let policeSmsResult = null;
+  let policeWhatsAppResult = null;
   if (policePhone) {
-    policeSmsResult = await sendTwilioSms(policePhone, policeMessage);
+    [policeSmsResult, policeWhatsAppResult] = await Promise.all([sendGammuSms(policePhone, policeMessage), sendEvolutionWhatsApp(policePhone, policeMessage)]);
+    if (!policeSmsResult.success && policeSmsResult.reason === "GAMMU_DISABLED") policeSmsResult = await sendTwilioSms(policePhone, policeMessage);
     if (!policeSmsResult.success && policeSmsResult.reason === "TWILIO_INCOMPLETE") {
       policeSmsResult = await sendFast2SMSSms(policePhone, policeMessage);
     }
@@ -351,6 +403,7 @@ async function sendEmergencyMessagingAlerts({
     phone: policePhone,
     status: policeSmsResult?.success ? "SENT" : "SIMULATED",
     whatsAppUrl: policeWhatsAppUrl,
+    whatsapp: policeWhatsAppResult,
     sms: policeSmsResult,
     preview: policeMessage,
   };
@@ -362,6 +415,8 @@ module.exports = {
   formatParentsEmergencyMessage,
   formatPoliceDispatchMessage,
   generateWhatsAppDeepLink,
+  sendEvolutionWhatsApp,
+  sendGammuSms,
   sendFast2SMSSms,
   sendTwilioSms,
   sendEmergencyMessagingAlerts,

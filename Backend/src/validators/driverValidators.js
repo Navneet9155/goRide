@@ -17,8 +17,19 @@ const registerDriverSchema = z.object({
 const updateDriverProfileSchema = z.object({
   name: z.string().min(2).max(60).optional(),
   vehicleModel: z.string().min(1).optional(),
-  vehicleColor: z.string().optional(),
   profileImage: z.string().url().optional(),
+  vehicleMake: z.string().max(80).optional(),
+  vehicleColor: z.string().max(40).optional(),
+  vehicleRegistrationDetails: z.string().max(200).optional(),
+  licenseExpiryDate: z.string().datetime().optional(),
+  documents: z.object({
+    drivingLicense: z.string().url().optional(), registrationCertificate: z.string().url().optional(),
+    insurance: z.string().url().optional(), permit: z.string().url().optional(),
+    pollutionCertificate: z.string().url().optional(), other: z.string().url().optional(),
+  }).optional(),
+  emergencyContacts: z.array(z.object({ name: z.string().min(2), phone: z.string().regex(/^[0-9]{10}$/), email: z.string().email().optional() })).max(5).optional(),
+  safetyPreferences: z.object({ shareTripStatus: z.boolean().optional(), sosConfirmation: z.boolean().optional() }).optional(),
+  preferences: z.object({ language: z.string().max(10).optional(), notificationsEnabled: z.boolean().optional(), communicationPreference: z.enum(["push", "sms", "email"]).optional() }).optional(),
 });
 
 const locationUpdateSchema = z.object({
@@ -26,4 +37,14 @@ const locationUpdateSchema = z.object({
   longitude: z.number().min(-180).max(180),
 });
 
-module.exports = { registerDriverSchema, updateDriverProfileSchema, locationUpdateSchema };
+const payoutProfileSchema = z.object({
+  accountHolderName: z.string().min(2).max(120),
+  bankAccountNumber: z.string().min(6).max(30).optional(),
+  ifsc: z.string().min(6).max(20).optional(),
+  upiId: z.string().min(3).max(120).optional(),
+  preferredMethod: z.enum(["bank", "upi"]).optional(),
+});
+
+const withdrawalSchema = z.object({ amount: z.number().positive() });
+
+module.exports = { registerDriverSchema, updateDriverProfileSchema, locationUpdateSchema, payoutProfileSchema, withdrawalSchema };

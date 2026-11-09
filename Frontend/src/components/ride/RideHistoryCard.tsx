@@ -172,13 +172,13 @@ export default function RideHistoryCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.card,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
+    borderColor: Colors.border,
+    shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   cancelledCard: {
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FAFAFA',
+    borderColor: Colors.errorFaint,
+    backgroundColor: Colors.surfaceElevated,
     opacity: 0.9,
   },
   topRow: {
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.textMuted,
     fontWeight: '600',
   },
   topRight: {
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   fare: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: Colors.textPrimary,
   },
   cancelledFare: {
     color: '#94A3B8',
@@ -224,34 +224,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   completedBadge: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: Colors.successFaint,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: '#B9E5D0',
   },
   completedText: {
-    color: '#047857',
+    color: Colors.success,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   cancelledBadge: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: Colors.errorFaint,
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: '#F3B6A8',
   },
   cancelledText: {
-    color: '#B91C1C',
+    color: Colors.error,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   activeBadge: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: Colors.primaryFaint,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: Colors.border,
   },
   activeText: {
-    color: '#1D4ED8',
+    color: Colors.textPrimary,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -270,32 +270,32 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#10B981',
+    backgroundColor: Colors.success,
     borderWidth: 2,
-    borderColor: '#D1FAE5',
+    borderColor: Colors.successFaint,
   },
   timelineLine: {
     width: 2,
     flex: 1,
     minHeight: 22,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: Colors.border,
     marginVertical: 3,
   },
   dropPin: {
     width: 10,
     height: 10,
     borderRadius: 2,
-    backgroundColor: '#EF4444',
+    backgroundColor: Colors.error,
     borderWidth: 2,
-    borderColor: '#FEE2E2',
+    borderColor: Colors.errorFaint,
   },
   mutedDot: {
-    backgroundColor: '#CBD5E1',
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.border,
+    borderColor: Colors.divider,
   },
   mutedPin: {
-    backgroundColor: '#CBD5E1',
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.border,
+    borderColor: Colors.divider,
   },
   addresses: {
     flex: 1,
@@ -304,12 +304,12 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: FontSize.sm,
-    color: '#1E293B',
+    color: Colors.textPrimary,
     fontWeight: '500',
     lineHeight: 18,
   },
   mutedAddress: {
-    color: '#94A3B8',
+    color: Colors.textMuted,
   },
   footer: {
     flexDirection: 'row',
@@ -317,14 +317,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: Colors.divider,
   },
   footerPerson: {
     flex: 1,
   },
   personRoleLabel: {
     fontSize: 10,
-    color: '#94A3B8',
+    color: Colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   personName: {
     fontSize: FontSize.sm,
     fontWeight: '700',
-    color: '#0F172A',
+    color: Colors.textPrimary,
   },
   footerRight: {
     flexDirection: 'row',
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   vehicleChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: Colors.surfaceElevated,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -349,19 +349,19 @@ const styles = StyleSheet.create({
   vehicleChipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#475569',
+    color: Colors.textSecondary,
   },
   ratingPill: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.warningFaint,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#F4D68A',
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   ratingText: {
     fontSize: 11,
-    color: '#92400E',
+    color: Colors.warning,
     fontWeight: '700',
   },
 });

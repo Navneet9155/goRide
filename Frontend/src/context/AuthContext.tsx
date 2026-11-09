@@ -26,6 +26,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   loginAsPassenger: (email: string, password: string) => Promise<void>;
   loginAsDriver: (email: string, password: string) => Promise<void>;
+  setSession: (role: Role, account: any, accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshCurrentUser: () => Promise<void>;
   updateLocalUser: (data: Partial<User>) => void;
@@ -181,12 +182,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, driver: s.driver ? { ...s.driver, ...data } : s.driver }));
   }, []);
 
+  const setSession = useCallback(async (role: Role, account: any, accessToken: string, refreshToken: string) => {
+    await Storage.saveTokens({
+      accessToken,
+      refreshToken,
+    });
+    await Storage.saveRole(role);
+    if (account) await Storage.saveUserData(account);
+    if (accessToken) socketService.connect(accessToken);
+    setState({
+      isAuthenticated: true,
+      isLoading: false,
+      role,
+      user: role === 'passenger' ? (account as Passenger) : null,
+      driver: role === 'driver' ? (account as Driver) : null,
+    });
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
         ...state,
         loginAsPassenger,
         loginAsDriver,
+        setSession,
         logout,
         refreshCurrentUser,
         updateLocalUser,

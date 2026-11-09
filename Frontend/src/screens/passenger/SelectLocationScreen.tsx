@@ -25,6 +25,8 @@ import { getCurrentUserLocation } from '../../services/maps/locationService';
 import { MapContainer, MapContainerRef } from '../../components/map/MapContainer';
 import { fetchOSRMRouteThroughPoints, LatLng } from '../../services/maps/osrmService';
 import { getNearbyDrivers, NearbyDriver } from '../../services/api/rideApi';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import VoiceSearchModal, { VoiceSearchLocation } from '../../components/common/VoiceSearchModal';
 
 type Props = NativeStackScreenProps<PassengerStackParamList, 'SelectLocation'>;
 
@@ -62,6 +64,9 @@ export default function SelectLocationScreen({ navigation }: Props) {
   const [searchResults, setSearchResults] = useState<Array<{ address: string; latitude: number; longitude: number }>>([]);
   const [searching, setSearching]         = useState(false);
   const [locatingCurrent, setLocatingCurrent] = useState(false);
+
+  // ── Voice search modal ─────────────────────────────────────
+  const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
 
   // ── Map picker mode ────────────────────────────────────────
   const [isMapMode, setIsMapMode]           = useState(false);
@@ -165,17 +170,52 @@ export default function SelectLocationScreen({ navigation }: Props) {
     setIsMapMode(false);
   }
 
+  // ── Handle voice-selected destination ─────────────────────
+  const handleVoiceLocationSelected = useCallback((loc: VoiceSearchLocation) => {
+    // Voice search directly selects destination (drop location)
+    Keyboard.dismiss();
+    setActiveField('drop');
+    const geoLoc: GeoLocation = { latitude: loc.latitude, longitude: loc.longitude, address: loc.address };
+    setDropAddress(loc.address);
+    setDropCoords(geoLoc);
+    setDropQuery(loc.address);
+
+    // If pickup isn't set yet, auto-populate with user GPS location so user can tap Continue immediately!
+    setPickupCoords(currentPickup => {
+      if (!currentPickup && userLocation) {
+        setPickupAddress(prev => prev || 'Current Location');
+        setPickupQuery(prev => prev || 'Current Location');
+        return {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          address: 'Current Location',
+        };
+      }
+      return currentPickup;
+    });
+
+    mapRef.current?.flyTo([loc.longitude, loc.latitude], 14);
+    setIsMapMode(false);
+  }, [userLocation]);
+
   // ── Use current location as pickup ─────────────────────────
   async function handleUseCurrentLocation() {
     setLocatingCurrent(true);
     try {
-      const loc = await getCurrentUserLocation();
+      let loc = userLocation ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : null;
+      if (!loc) {
+        loc = await getCurrentUserLocation();
+      }
       if (!loc) {
         Alert.alert('Location Unavailable', 'Please enable location permissions and try again.');
         return;
       }
+      setUserLocation({ latitude: loc.latitude, longitude: loc.longitude });
       const address = await reverseGeocode(loc.latitude, loc.longitude);
       selectLocation({ address, latitude: loc.latitude, longitude: loc.longitude });
+    } catch (err) {
+      console.warn('[SelectLocation] handleUseCurrentLocation error:', err);
+      Alert.alert('Location Error', 'Could not determine location. Please select on map.');
     } finally {
       setLocatingCurrent(false);
     }
@@ -320,7 +360,19 @@ export default function SelectLocationScreen({ navigation }: Props) {
                 onFocus={() => setActiveField('drop')}
                 placeholderTextColor={Colors.textMuted}
               />
-              {searching && activeField === 'drop' && <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />}
+              {searching && activeField === 'drop'
+                ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                : (
+                  <TouchableOpacity
+                    onPress={() => { Keyboard.dismiss(); setIsVoiceModalVisible(true); }}
+                    style={styles.micInputBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Voice destination search"
+                  >
+                    <Ionicons name="mic" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                )
+              }
             </View>
           </View>
         </View>
@@ -405,6 +457,15 @@ export default function SelectLocationScreen({ navigation }: Props) {
           )}
         </View>
       )}
+
+      {/* ── VOICE DESTINATION SEARCH MODAL ──────────────────── */}
+      <VoiceSearchModal
+        visible={isVoiceModalVisible}
+        onClose={() => setIsVoiceModalVisible(false)}
+        onLocationSelected={handleVoiceLocationSelected}
+        userLatitude={userLocation?.latitude}
+        userLongitude={userLocation?.longitude}
+      />
     </View>
   );
 }
@@ -498,6 +559,16 @@ const styles = StyleSheet.create({
   },
   inputDot: { width: 8, height: 8, borderRadius: 4, zIndex: 2 },
   inputSquare: { width: 8, height: 8, borderRadius: 1, zIndex: 2 },
+  micInputBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.sm,
+    marginRight: 4,
+  },
   stopText: {
     flex: 1,
     marginLeft: Spacing.md,

@@ -113,6 +113,31 @@ See `.env.example` for the full list with descriptions. Key ones:
    `payment.failed`, and set `RAZORPAY_WEBHOOK_SECRET` to the secret shown
    there.
 
+## SOS Delivery Setup
+
+SOS starts from the React Native location permission flow and sends latitude/
+longitude to the backend. The backend stores the incident, finds the nearest
+mapped police station through OpenStreetMap Overpass, and dispatches to the
+passenger/driver's saved emergency contacts.
+
+1. **Evolution API / WhatsApp:** Run Evolution API with a dedicated business
+   WhatsApp number, create an instance, complete its QR pairing, then set
+   `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, and `EVOLUTION_INSTANCE`.
+2. **Gammu / GSM modem SMS:** Connect a SIM-enabled GSM modem to the server,
+   configure and start `gammu-smsd`, then set `GAMMU_SMS_ENABLED=true`.
+   On Windows set `GAMMU_SMS_INJECT_COMMAND` to the absolute path of
+   `gammu-smsd-inject.exe` if it is not on PATH. The backend invokes it with
+   `TEXT +91... -text ...`; it does not pass contact data through a shell.
+3. Set `POLICE_DISPATCH_PHONE` to your authorised, staffed safety-control
+   number. This is **not** an official police integration. The nearest station
+   lookup is informational only; emergency contacts should call 112/100 when
+   immediate response is required.
+
+When Gammu or Evolution is unavailable, the service records the failed channel
+and falls back to the existing configured cloud-SMS providers where available.
+Never use a personal developer number as the police-dispatch contact in
+production.
+
 ## Running Locally
 
 ```bash

@@ -45,8 +45,29 @@ export async function updateDriverProfile(data: Partial<Driver>): Promise<{ driv
   return response.data.data || response.data;
 }
 
+export async function changeDriverPassword(data: { currentPassword: string; newPassword: string }): Promise<void> {
+  await apiClient.patch('/drivers/change-password', data);
+}
+
 export async function getTodayEarnings(): Promise<{ earnings: number; ridesCount: number }> {
   const response = await apiClient.get('/rides/driver/earnings/today');
+  return response.data.data;
+}
+
+export async function getDriverWallet(): Promise<any> {
+  const response = await apiClient.get('/drivers/wallet');
+  return response.data.data;
+}
+
+export async function savePayoutProfile(data: {
+  accountHolderName: string; bankAccountNumber?: string; ifsc?: string; upiId?: string; preferredMethod?: 'bank' | 'upi';
+}): Promise<any> {
+  const response = await apiClient.put('/drivers/payout-profile', data);
+  return response.data.data;
+}
+
+export async function requestWithdrawal(amount: number): Promise<any> {
+  const response = await apiClient.post('/drivers/withdrawals', { amount });
   return response.data.data;
 }
 

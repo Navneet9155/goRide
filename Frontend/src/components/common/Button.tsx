@@ -26,9 +26,9 @@ interface ButtonProps extends TouchableOpacityProps {
 }
 
 const sizeStyles: Record<Size, { paddingVertical: number; fontSize: number; height: number }> = {
-  sm: { paddingVertical: 8, fontSize: FontSize.sm, height: 38 },
-  md: { paddingVertical: 14, fontSize: FontSize.base, height: 50 },
-  lg: { paddingVertical: 18, fontSize: FontSize.lg, height: 58 },
+  sm: { paddingVertical: 8, fontSize: FontSize.sm, height: 40 },
+  md: { paddingVertical: 14, fontSize: FontSize.base, height: 52 },
+  lg: { paddingVertical: 18, fontSize: FontSize.lg, height: 60 },
 };
 
 export default function Button({
@@ -129,7 +129,7 @@ export default function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -138,16 +138,16 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.xl,
   },
   fullWidth: {
     width: '100%',
   },
   outline: {
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.textPrimary,
+    backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.xl,
   },
   ghost: {
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   text: {
     color: Colors.white,
     fontWeight: FontWeight.semibold,
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
   },
   outlineText: {
     color: Colors.primary,

@@ -6,8 +6,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MapContainerRef } from '../../components/map/MapContainer';
 import { MapContainer } from '../../components/map/MapContainer';
 import { getCurrentUserLocation, requestLocationPermission } from '../../services/maps/locationService';
@@ -18,15 +19,17 @@ import { useRide } from '../../context/RideContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { RIDE_STATUS, CANCELLABLE_STATUSES } from '../../constants/enums';
 import Avatar from '../../components/common/Avatar';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 const DEFAULT_REGION = {
-  latitude: 19.076,
-  longitude: 72.877,
+  latitude: 28.6139,
+  longitude: 77.2090,
   latitudeDelta: 0.05,
   longitudeDelta: 0.05,
 };
 
 export default function HomeScreen({ navigation }: { navigation: any }) {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { currentRide, otp, setCurrentRide } = useRide();
   const { unreadCount } = useNotifications();
@@ -37,7 +40,11 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   useEffect(() => {
     loadCurrentLocation();
@@ -85,29 +92,45 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
 
 
   async function loadCurrentLocation() {
+    setLocationLoading(true);
     try {
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
-        setLocationError('Location permission denied');
+        setLocationError('Location permission not granted. Tap to enable.');
+        const fallback = await getCurrentUserLocation();
+        if (fallback) {
+          updateMapLocation(fallback.latitude, fallback.longitude);
+        }
         return;
       }
 
       const pos = await getCurrentUserLocation();
       if (!pos) {
-        setLocationError('Current location unavailable. Turn on GPS/high accuracy mode.');
+        setLocationError('Could not detect location. Please check device GPS.');
         return;
       }
+      setLocationError('');
       updateMapLocation(pos.latitude, pos.longitude);
     } catch (err: any) {
       if (!userLocation) {
         setLocationError(err.message || 'Error getting current location');
       }
+    } finally {
+      setLocationLoading(false);
     }
   }
 
   function updateMapLocation(latitude: number, longitude: number) {
     setUserLocation({ latitude, longitude });
-    mapRef.current?.flyTo([longitude, latitude], 14);
+    mapRef.current?.flyTo([longitude, latitude], 15);
+  }
+
+  function handleRecenter() {
+    if (userLocation) {
+      mapRef.current?.flyTo([userLocation.longitude, userLocation.latitude], 15);
+    } else {
+      loadCurrentLocation();
+    }
   }
 
   return (
@@ -117,12 +140,25 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
       <MapContainer
         ref={mapRef}
         initialRegion={DEFAULT_REGION}
-        pickupLocation={userLocation}
+        userLocation={userLocation}
+        pickupLocation={null}
         showsUserLocation
         showsMyLocationButton
       />
 
-      <View style={styles.topOverlay}>
+      <TouchableOpacity
+        style={styles.recenterBtn}
+        onPress={handleRecenter}
+        activeOpacity={0.8}
+        accessibilityLabel="Recenter map to my location">
+        {locationLoading ? (
+          <ActivityIndicator size="small" color={Colors.primary} />
+        ) : (
+          <Ionicons name="locate" size={22} color={Colors.primary} />
+        )}
+      </TouchableOpacity>
+
+      <View style={[styles.topOverlay, { paddingTop: insets.top + Spacing.md }]}>
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
             <Avatar name={user?.name ?? 'U'} imageUri={user?.profileImage} size={32} />
@@ -131,8 +167,14 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
           <View style={styles.topActions}>
             <TouchableOpacity
               style={styles.iconBtn}
+              onPress={() => navigation.navigate('VoiceBooking')}
+              accessibilityLabel="Book a ride by voice">
+              <Ionicons name="mic-outline" size={20} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
               onPress={() => navigation.navigate('Notifications')}>
-              <Text style={styles.iconBtnText}>Bell</Text>
+              <Ionicons name="notifications-outline" size={20} color={Colors.textPrimary} />
               {unreadCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{unreadCount}</Text>
@@ -142,16 +184,16 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => navigation.navigate('Profile')}>
-              <Text style={styles.iconBtnText}>Me</Text>
+              <Ionicons name="person-outline" size={20} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      <View style={styles.greetingChip}>
-        <Text style={styles.greetingIcon}>Hi</Text>
+      <View style={[styles.greetingChip, { top: insets.top + 76 }]}>
+        <Ionicons name="sunny-outline" size={16} color={Colors.warning} />
         <Text style={styles.greetingText}>
-          Good morning, {user?.name?.split(' ')[0] ?? 'Ayush'}
+          {greeting}, {user?.name?.split(' ')[0] ?? 'there'}
         </Text>
       </View>
 {otp && (
@@ -174,12 +216,25 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
 
         <View style={styles.routeInputs}>
           <View style={styles.routeLine} />
-          <View style={styles.pickupInput}>
+          <TouchableOpacity
+            style={styles.pickupInput}
+            onPress={loadCurrentLocation}
+            activeOpacity={0.8}
+            accessibilityLabel="Current pickup location">
             <View style={styles.pickupDot} />
             <Text style={styles.inputText} numberOfLines={1}>
-              {userLocation ? 'Current Location' : 'Finding current location'}
+              {locationLoading
+                ? 'Locating your position...'
+                : userLocation
+                ? 'Current Location'
+                : 'Tap to find location'}
             </Text>
-          </View>
+            {locationLoading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
+            )}
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.destinationInput}
             onPress={() => navigation.navigate('SelectLocation')}
@@ -214,8 +269,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     elevation: 10,
-    paddingTop: Platform.OS === 'android' ? 32 : 48,
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.lg,
     paddingBottom: 10,
     backgroundColor: Colors.mapOverlay,
   },
@@ -243,15 +297,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  },
-  iconBtnText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontWeight: FontWeight.semibold,
   },
   badge: {
     position: 'absolute',
@@ -267,23 +318,22 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold },
   greetingChip: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 82 : 96,
-    left: 20,
+    left: Spacing.lg,
     zIndex: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.lg,
     paddingVertical: 10,
     borderWidth: 1,
     borderColor: Colors.divider,
-  },
-  greetingIcon: {
-    color: Colors.primary,
-    fontWeight: FontWeight.bold,
-    fontSize: FontSize.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
   greetingText: {
     color: Colors.textPrimary,
@@ -298,13 +348,17 @@ const styles = StyleSheet.create({
     zIndex: 10,
     elevation: 10,
     backgroundColor: Colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     gap: Spacing.md,
   },
   grabber: {
@@ -421,5 +475,22 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSize.lg,
     fontWeight: FontWeight.bold,
+  },
+  recenterBtn: {
+    position: 'absolute',
+    bottom: 350,
+    right: Spacing.lg,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 6,
+    zIndex: 15,
   },
 });

@@ -145,7 +145,7 @@ const getMe = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const allowed = ["name", "gender", "profileImage"];
+  const allowed = ["name", "gender", "profileImage", "preferredPaymentMethod", "safetyPreferences", "preferences"];
   allowed.forEach((field) => {
     if (req.body[field] !== undefined) req.user[field] = req.body[field];
   });

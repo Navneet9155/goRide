@@ -1,3 +1,6 @@
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
+
 const mongoose = require("mongoose");
 const env = require("./env");
 const logger = require("../utils/logger");
@@ -5,7 +8,10 @@ const logger = require("../utils/logger");
 async function connectDB() {
   mongoose.set("strictQuery", true);
   try {
-    await mongoose.connect(env.MONGODB_URI);
+    await mongoose.connect(env.MONGODB_URI, {
+      family: 4,
+      serverSelectionTimeoutMS: 10000,
+    });
     logger.info(`MongoDB connected: ${mongoose.connection.host}`);
   } catch (err) {
     logger.error({ err }, "MongoDB connection failed");

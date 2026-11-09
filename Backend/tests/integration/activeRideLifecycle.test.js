@@ -6,7 +6,7 @@ const { initSocket } = require("../../src/sockets");
 const User = require("../../src/models/User");
 const Driver = require("../../src/models/Driver");
 const Ride = require("../../src/models/Ride");
-const { RIDE_STATUS, PAYMENT_METHOD } = require("../../src/constants/enums");
+const { RIDE_STATUS, PAYMENT_METHOD, PAYMENT_STATUS } = require("../../src/constants/enums");
 const { signAccessToken } = require("../../src/utils/tokens");
 const otpService = require("../../src/services/otpService");
 
@@ -342,6 +342,54 @@ describe("Phase 1B — Active Ride Lifecycle Integration Tests", () => {
       const dbDriver = await Driver.findById(driver._id);
       expect(dbDriver.totalRides).toBe(1);
       expect(dbDriver.isAvailable).toBe(true);
+    });
+
+    it("completes started ride with online payment method and allows subsequent payment settlement", async () => {
+      const passenger = await makePassenger();
+      const driver = await makeDriver({ isAvailable: false, totalEarnings: 0, totalRides: 0 });
+      const driverToken = signAccessToken({ id: driver._id.toString(), role: "driver" });
+
+      const ride = await createBaseRide(passenger, driver, RIDE_STATUS.RIDE_STARTED, {
+        driver: driver._id,
+        otpVerified: true,
+        startedAt: new Date(),
+        estimatedFare: 400,
+        paymentMethod: PAYMENT_METHOD.ONLINE,
+      });
+
+      const res = await request(app)
+        .post(`/api/rides/${ride._id}/complete`)
+        .set("Authorization", `Bearer ${driverToken}`)
+        .send({ paymentMethod: "online" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.ride.rideStatus).toBe(RIDE_STATUS.RIDE_COMPLETED);
+      expect(res.body.data.ride.paymentMethod).toBe("online");
+      expect(res.body.data.ride.paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+    });
+
+    it("allows passenger to create payment order during active RIDE_STARTED ride without deadlock", async () => {
+      const passenger = await makePassenger();
+      const driver = await makeDriver({ isAvailable: false });
+      const passengerToken = signAccessToken({ id: passenger._id.toString(), role: "passenger" });
+
+      const ride = await createBaseRide(passenger, driver, RIDE_STATUS.RIDE_STARTED, {
+        driver: driver._id,
+        otpVerified: true,
+        startedAt: new Date(),
+        estimatedFare: 500,
+        paymentMethod: PAYMENT_METHOD.ONLINE,
+      });
+
+      const res = await request(app)
+        .post("/api/payments/create-order")
+        .set("Authorization", `Bearer ${passengerToken}`)
+        .send({ rideId: ride._id.toString() });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.orderId).toBeDefined();
     });
   });
 });

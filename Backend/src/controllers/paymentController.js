@@ -9,19 +9,18 @@ const paymentService = require("../services/paymentService");
 const notificationService = require("../services/notificationService");
 const { NOTIFICATION_TYPE, PAYMENT_STATUS, RIDE_STATUS } = require("../constants/enums");
 const logger = require("../utils/logger");
+const walletService = require("../services/walletService");
 
 const createOrder = catchAsync(async (req, res, next) => {
   const ride = await Ride.findOne({ _id: req.body.rideId, passenger: req.user._id });
   if (!ride) return next(new AppError("Ride not found", 404));
-  const validStatuses = [
-    RIDE_STATUS.DRIVER_ASSIGNED,
-    RIDE_STATUS.DRIVER_ARRIVING,
+  const allowedStatuses = [
     RIDE_STATUS.DRIVER_ARRIVED,
     RIDE_STATUS.RIDE_STARTED,
     RIDE_STATUS.RIDE_COMPLETED,
   ];
-  if (!validStatuses.includes(ride.rideStatus)) {
-    return next(new AppError("Payment can only be initiated for an active or completed ride", 400));
+  if (!allowedStatuses.includes(ride.rideStatus)) {
+    return next(new AppError("Payment can only be initiated for an active or completed ride.", 400));
   }
   // Ensure ride is marked for online payment
   if (ride.paymentMethod !== "online") {
@@ -127,6 +126,12 @@ async function processSuccessfulPayment(paymentId, gatewayPaymentId) {
 
         if (updated.driver) {
           await Driver.findByIdAndUpdate(updated.driver, { $inc: { totalEarnings: ride.driverEarning || updated.amount } }, { session });
+          await walletService.creditOnlineRide({
+            driver: updated.driver,
+            ride: ride._id,
+            payment: updated._id,
+            amount: ride.driverEarning || updated.amount,
+          });
         }
 
         outcome = { payment: updated, ride, alreadyProcessed: false };
@@ -155,6 +160,12 @@ async function processSuccessfulPayment(paymentId, gatewayPaymentId) {
 
         if (updated.driver) {
           await Driver.findByIdAndUpdate(updated.driver, { $inc: { totalEarnings: ride.driverEarning || updated.amount } });
+          await walletService.creditOnlineRide({
+            driver: updated.driver,
+            ride: ride._id,
+            payment: updated._id,
+            amount: ride.driverEarning || updated.amount,
+          });
         }
 
         outcome = { payment: updated, ride, alreadyProcessed: false };
@@ -181,6 +192,10 @@ async function processSuccessfulPayment(paymentId, gatewayPaymentId) {
         io.to(`driver:${driverId}`).emit("payment_updated", {
           rideId: outcome.payment.ride,
           status: PAYMENT_STATUS.SUCCESS,
+        });
+        io.to(`driver:${driverId}`).emit("wallet_updated", {
+          rideId: outcome.payment.ride,
+          reason: "ONLINE_PAYMENT_CAPTURED",
         });
       }
     } catch (err) {

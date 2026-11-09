@@ -44,7 +44,7 @@ type FormDriver = FormPassenger & {
 
 export default function RegisterScreen({ navigation, route }: Props) {
   const { role } = route.params;
-  const { loginAsPassenger, loginAsDriver } = useAuth();
+  const { setSession } = useAuth();
   const isDriver = role === 'driver';
   const accentColor = isDriver ? Colors.secondary : Colors.primary;
   const gradientColors = isDriver ? ['#00D4B4', '#00B89C'] : Colors.gradientPrimary;
@@ -112,8 +112,6 @@ export default function RegisterScreen({ navigation, route }: Props) {
     setLoading(true);
     try {
       if (isDriver) {
-        // loginAsDriver handles token storage, socket connect & AuthContext state update
-        // which triggers automatic navigation via RootNavigator
         const data = await driverApi.registerDriver({
           name: form.name.trim(),
           email: form.email.trim(),
@@ -128,14 +126,8 @@ export default function RegisterScreen({ navigation, route }: Props) {
         const token = data.accessToken || data.data?.accessToken || '';
         const refresh = data.refreshToken || data.data?.refreshToken || '';
         const driverObj = data.driver || data.data?.driver;
-        await Storage.saveTokens({ accessToken: token, refreshToken: refresh });
-        await Storage.saveRole('driver');
-        if (driverObj) await Storage.saveUserData(driverObj);
-        if (token) socketService.connect(token);
-        // Trigger login to update AuthContext (auto-navigates home)
-        await loginAsDriver(form.email.trim(), form.password);
+        await setSession('driver', driverObj, token, refresh);
       } else {
-        // Register passenger in backend first
         const data = await authApi.registerPassenger({
           name: form.name.trim(),
           email: form.email.trim(),
@@ -149,12 +141,7 @@ export default function RegisterScreen({ navigation, route }: Props) {
         const token = data.accessToken || data.data?.accessToken || '';
         const refresh = data.refreshToken || data.data?.refreshToken || '';
         const userObj = data.user || data.data?.user;
-        await Storage.saveTokens({ accessToken: token, refreshToken: refresh });
-        await Storage.saveRole('passenger');
-        if (userObj) await Storage.saveUserData(userObj);
-        if (token) socketService.connect(token);
-        // Trigger login to update AuthContext (auto-navigates home)
-        await loginAsPassenger(form.email.trim(), form.password);
+        await setSession('passenger', userObj, token, refresh);
       }
     } catch (err) {
       Alert.alert('Registration Failed', parseApiError(err));

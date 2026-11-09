@@ -37,12 +37,16 @@ export default function SosSwipeModal({
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const arrowAnim = useRef(new Animated.Value(0)).current;
   const [triggered, setTriggered] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const confirmationStarted = useRef(false);
 
   // Pulse glow effect
   useEffect(() => {
     if (!visible) {
       panY.setValue(0);
       setTriggered(false);
+      setCountdown(null);
+      confirmationStarted.current = false;
       return;
     }
 
@@ -68,6 +72,19 @@ export default function SosSwipeModal({
     };
   }, [visible]);
 
+  // A short cancellation window prevents accidental SOS while preserving a
+  // fast emergency response. No channel is contacted until it reaches zero.
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      setCountdown(null);
+      onConfirm();
+      return;
+    }
+    const timer = setTimeout(() => setCountdown(value => value === null ? null : value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, onConfirm]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -80,7 +97,7 @@ export default function SosSwipeModal({
         }
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy <= SWIPE_THRESHOLD) {
+        if (gestureState.dy <= SWIPE_THRESHOLD && !confirmationStarted.current) {
           // Completed swipe up
           setTriggered(true);
           Animated.timing(panY, {
@@ -88,7 +105,8 @@ export default function SosSwipeModal({
             duration: 150,
             useNativeDriver: true,
           }).start(() => {
-            onConfirm();
+            confirmationStarted.current = true;
+            setCountdown(3);
           });
         } else {
           // Reset slider back down
@@ -105,6 +123,17 @@ export default function SosSwipeModal({
 
   function handleDirectPoliceCall() {
     Linking.openURL('tel:112');
+  }
+
+  function handleCancel() {
+    if (countdown !== null) {
+      setCountdown(null);
+      setTriggered(false);
+      confirmationStarted.current = false;
+      Animated.spring(panY, { toValue: 0, friction: 6, tension: 40, useNativeDriver: true }).start();
+      return;
+    }
+    onClose();
   }
 
   return (
@@ -124,7 +153,7 @@ export default function SosSwipeModal({
 
           <Text style={styles.title}>EMERGENCY SOS</Text>
           <Text style={styles.subtitle}>
-            Hold & swipe up the button to alert emergency contacts and dial Police.
+            {countdown !== null ? `Sending SOS in ${countdown}… Tap cancel to stop.` : 'Hold & swipe up to start a 3-second SOS confirmation.'}
           </Text>
 
           {/* Warning Banner */}
@@ -141,7 +170,7 @@ export default function SosSwipeModal({
               <Animated.View style={[styles.arrowContainer, { transform: [{ translateY: arrowAnim }] }]}>
                 <Text style={styles.arrowText}>▲</Text>
                 <Text style={styles.arrowText}>▲</Text>
-                <Text style={styles.trackInstruction}>SWIPE UP TO CONFIRM</Text>
+              <Text style={styles.trackInstruction}>{countdown !== null ? `SENDING IN ${countdown}` : 'SWIPE UP TO CONFIRM'}</Text>
               </Animated.View>
 
               {/* Draggable Knob */}
@@ -176,8 +205,8 @@ export default function SosSwipeModal({
           </TouchableOpacity>
 
           {/* Cancel Button */}
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={loading}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
+          <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} disabled={loading}>
+            <Text style={styles.cancelBtnText}>{countdown !== null ? 'Cancel SOS' : 'Cancel'}</Text>
           </TouchableOpacity>
         </View>
       </View>

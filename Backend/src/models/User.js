@@ -23,6 +23,16 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 8, select: false },
     gender: { type: String, enum: Object.values(GENDER), default: GENDER.PREFER_NOT_TO_SAY },
     profileImage: { type: String, default: null },
+    preferredPaymentMethod: { type: String, enum: ["cash", "online"], default: "cash" },
+    safetyPreferences: {
+      shareTripStatus: { type: Boolean, default: true },
+      sosConfirmation: { type: Boolean, default: true },
+    },
+    preferences: {
+      language: { type: String, default: "en" },
+      notificationsEnabled: { type: Boolean, default: true },
+      communicationPreference: { type: String, enum: ["push", "sms", "email"], default: "push" },
+    },
     role: { type: String, enum: ["passenger"], default: "passenger" },
     isVerified: { type: Boolean, default: false },
     emergencyContacts: [

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Ride = require("../models/Ride");
 const Driver = require("../models/Driver");
 const Payment = require("../models/Payment");
+const walletService = require("../services/walletService");
 const Rating = require("../models/Rating");
 
 const AppError = require("../utils/AppError");
@@ -1281,18 +1282,6 @@ const completeRide = catchAsync(
            * Ride MUST already have SUCCESS payment status.
            */
           if (
-            selectedPaymentMethod ===
-            "online" &&
-            ride.paymentStatus !==
-            PAYMENT_STATUS.SUCCESS
-          ) {
-            throw new AppError(
-              "Online payment must be completed before finishing the ride",
-              400
-            );
-          }
-
-          if (
             ride.paymentStatus !==
             PAYMENT_STATUS.SUCCESS
           ) {
@@ -1305,6 +1294,9 @@ const completeRide = catchAsync(
             ) {
               ride.paymentStatus =
                 PAYMENT_STATUS.SUCCESS;
+            } else {
+              ride.paymentStatus =
+                PAYMENT_STATUS.PENDING;
             }
           }
 
@@ -1465,20 +1457,6 @@ const completeRide = catchAsync(
        * to be completed.
        */
       if (
-        selectedPaymentMethod ===
-        "online" &&
-        ride.paymentStatus !==
-        PAYMENT_STATUS.SUCCESS
-      ) {
-        return next(
-          new AppError(
-            "Online payment must be completed before finishing the ride",
-            400
-          )
-        );
-      }
-
-      if (
         ride.paymentStatus !==
         PAYMENT_STATUS.SUCCESS
       ) {
@@ -1491,6 +1469,9 @@ const completeRide = catchAsync(
         ) {
           ride.paymentStatus =
             PAYMENT_STATUS.SUCCESS;
+        } else {
+          ride.paymentStatus =
+            PAYMENT_STATUS.PENDING;
         }
       }
 
@@ -1584,6 +1565,18 @@ const completeRide = catchAsync(
       }
     }
 
+    // For cash rides the driver keeps the collected fare; only GoRide's
+    // commission is debited from the driver's withdrawable wallet.
+    if (responseRide.paymentMethod === "cash" && responseRide.paymentStatus === PAYMENT_STATUS.SUCCESS) {
+      const cashPayment = await Payment.findOne({ ride: responseRide._id, method: "cash" });
+      await walletService.chargeCashPlatformFee({
+        driver: responseRide.driver,
+        ride: responseRide._id,
+        payment: cashPayment?._id,
+        amount: responseRide.platformCommission || 0,
+      });
+    }
+
     const passengerId =
       getIdString(
         responseRide.passenger
@@ -1613,6 +1606,13 @@ const completeRide = catchAsync(
       rideId: responseRide._id,
       finalFare:
         responseRide.finalFare,
+    });
+
+    // The driver wallet has changed: cash earnings were collected and the
+    // platform-fee ledger entry was applied. The app reloads canonical data.
+    io.to(`driver:${responseRide.driver}`).emit("wallet_updated", {
+      rideId: responseRide._id,
+      reason: responseRide.paymentMethod === "cash" ? "CASH_RIDE_COMPLETED" : "RIDE_COMPLETED",
     });
 
     return sendSuccess(res, {
@@ -1835,6 +1835,7 @@ const triggerSos = catchAsync(
 
     const isPassenger =
       req.userRole === "passenger";
+    const triggeredBy = isPassenger ? "passenger" : "driver";
 
     const ride =
       await Ride.findOne({
@@ -1890,11 +1891,16 @@ const triggerSos = catchAsync(
       );
     }
 
+    // Best-effort lookup: never delay or block the SOS if Overpass is unavailable.
+    const { findNearestPoliceStation } = require("../services/policeStationService");
+    const nearestPoliceStation = await findNearestPoliceStation(latitude, longitude);
+
     const sos =
       await Sos.create({
         ride: ride._id,
         passenger: ride.passenger,
         driver: ride.driver,
+        triggeredBy,
 
         location: {
           type: "Point",
@@ -1904,6 +1910,7 @@ const triggerSos = catchAsync(
             latitude,
           ],
         },
+        nearestPoliceStation: nearestPoliceStation || undefined,
       });
 
     const passenger =
@@ -1922,13 +1929,11 @@ const triggerSos = catchAsync(
     /*
      * Emergency contact emails.
      */
-    if (
-      passenger?.emergencyContacts
-        ?.length
-    ) {
+    const sosOwner = isPassenger ? passenger : driver;
+    if (sosOwner?.emergencyContacts?.length) {
       for (
         const contact of
-        passenger.emergencyContacts
+        sosOwner.emergencyContacts
       ) {
         if (!contact.email) {
           continue;
@@ -1942,10 +1947,10 @@ const triggerSos = catchAsync(
               contact.name,
 
             passengerName:
-              passenger.name,
+              sosOwner.name,
 
             passengerPhone:
-              passenger.phone,
+              sosOwner.phone,
 
             driverName:
               driver?.name,
@@ -2023,10 +2028,27 @@ const triggerSos = catchAsync(
           passenger,
           driver,
           ride,
+          triggeredBy: isPassenger ? "passenger" : "driver",
           latitude,
           longitude,
           mapsUrl,
+          nearestPoliceStation,
           triggeredAt: sos.createdAt,
+        })
+        .then(async (delivery) => {
+          // Store a compact audit trail, never the private message text or provider secrets.
+          sos.delivery = {
+            attemptedAt: new Date(),
+            contacts: (delivery.parentsAlerts || []).map((item) => ({
+              name: item.recipient,
+              phone: item.phone,
+              sms: item.sms?.success ? "SENT" : item.sms?.reason || "NOT_SENT",
+              whatsapp: item.whatsapp?.success ? "SENT" : item.whatsapp?.reason || "NOT_SENT",
+            })),
+            dispatchSms: delivery.policeAlert?.sms?.success ? "SENT" : delivery.policeAlert?.sms?.reason || "NOT_SENT",
+            dispatchWhatsApp: delivery.policeAlert?.whatsapp?.success ? "SENT" : delivery.policeAlert?.whatsapp?.reason || "NOT_SENT",
+          };
+          await sos.save();
         })
         .catch((error) => {
           logger.error(
@@ -2039,51 +2061,8 @@ const triggerSos = catchAsync(
     }
 
     /*
-     * Notify the other participant.
-     */
-    const rawRecipientId =
-      isPassenger
-        ? ride.driver
-        : ride.passenger;
-
-    const recipientId =
-      getIdString(
-        rawRecipientId
-      );
-
-    const recipientRole =
-      isPassenger
-        ? "driver"
-        : "passenger";
-
-    if (recipientId) {
-      await notificationService.notify(
-        {
-          recipientId,
-
-          recipientRole,
-
-          type:
-            NOTIFICATION_TYPE.SOS_TRIGGERED,
-
-          title:
-            "🚨 EMERGENCY SOS TRIGGERED",
-
-          message:
-            `SOS alert triggered by ${isPassenger
-              ? passenger?.name ||
-              "Passenger"
-              : driver?.name ||
-              "Driver"
-            }. Location: ${latitude}, ${longitude}. Live Map: ${mapsUrl}`,
-
-          ride: ride._id,
-        }
-      );
-    }
-
-    /*
-     * Real-time socket notification to both participants and ride room.
+     * Privacy rule: SOS is visible only to the person who triggered it.
+     * The other ride participant must never see the alert, location or banner.
      */
     try {
       const io =
@@ -2096,25 +2075,12 @@ const triggerSos = catchAsync(
         latitude,
         longitude,
         mapsUrl,
-        triggeredBy: isPassenger ? "passenger" : "driver",
-        passenger: passenger
-          ? {
-              name: passenger.name,
-              phone: passenger.phone,
-            }
-          : null,
-        driver: driver
-          ? {
-              name: driver.name,
-              phone: driver.phone,
-              vehicleNumber: driver.vehicleNumber,
-            }
-          : null,
+        nearestPoliceStation,
+        triggeredBy,
       };
 
-      io.to(`ride:${ride._id}`).emit("sos_triggered", sosSocketPayload);
-      if (ride.passenger) io.to(`passenger:${ride.passenger}`).emit("sos_triggered", sosSocketPayload);
-      if (ride.driver) io.to(`driver:${ride.driver}`).emit("sos_triggered", sosSocketPayload);
+      if (isPassenger) io.to(`passenger:${ride.passenger}`).emit("sos_triggered", sosSocketPayload);
+      else io.to(`driver:${ride.driver}`).emit("sos_triggered", sosSocketPayload);
     } catch (socketError) {
       logger.warn(
         {
@@ -2139,11 +2105,12 @@ const triggerSos = catchAsync(
       statusCode: 201,
 
       message:
-        "SOS alert sent to emergency contacts, police dispatch, and ride participants.",
+        "Private SOS alert sent to your emergency contacts and configured safety dispatch.",
 
       data: {
         sos,
         mapsUrl,
+        nearestPoliceStation,
       },
     });
   }
@@ -2171,6 +2138,7 @@ const cancelSos = catchAsync(async (req, res, next) => {
     {
       ride: ride._id,
       status: SOS_STATUS.TRIGGERED,
+      triggeredBy: isPassenger ? "passenger" : "driver",
     },
     {
       status: SOS_STATUS.RESOLVED,
@@ -2187,9 +2155,8 @@ const cancelSos = catchAsync(async (req, res, next) => {
       resolvedBy: isPassenger ? "passenger" : "driver",
       resolvedAt: new Date(),
     };
-    io.to(`ride:${ride._id}`).emit("sos_resolved", payload);
-    if (ride.passenger) io.to(`passenger:${ride.passenger}`).emit("sos_resolved", payload);
-    if (ride.driver) io.to(`driver:${ride.driver}`).emit("sos_resolved", payload);
+    if (isPassenger) io.to(`passenger:${ride.passenger}`).emit("sos_resolved", payload);
+    else io.to(`driver:${ride.driver}`).emit("sos_resolved", payload);
   } catch (socketError) {
     logger.warn({ socketError }, "Could not emit sos_resolved socket event");
   }

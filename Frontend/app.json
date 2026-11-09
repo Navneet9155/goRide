@@ -8,7 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "GoRide needs speech recognition to understand Hindi and Hinglish booking requests.",
+        "NSMicrophoneUsageDescription": "GoRide needs microphone access so you can book rides by voice."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,8 +26,12 @@
         "ACCESS_NETWORK_STATE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "FOREGROUND_SERVICE"
-      ]
+        "FOREGROUND_SERVICE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.goride"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,7 +42,19 @@
         {
           "locationAlwaysAndWhenInUsePermission": "GoRide requires location access to find nearby rides and track your route."
         }
-      ]
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "GoRide needs microphone access so you can book rides by voice.",
+          "speechRecognitionPermission": "GoRide needs speech recognition to understand Hindi and Hinglish booking requests.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      "expo-font",
+      "expo-audio"
     ]
   }
 }

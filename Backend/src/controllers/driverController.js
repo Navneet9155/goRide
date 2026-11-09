@@ -94,12 +94,32 @@ const getProfile = catchAsync(async (req, res) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const allowed = ["name", "vehicleModel", "vehicleColor", "profileImage"];
+  const allowed = ["name", "vehicleModel", "vehicleMake", "vehicleColor", "vehicleRegistrationDetails", "licenseExpiryDate", "profileImage", "documents", "emergencyContacts", "safetyPreferences", "preferences"];
   allowed.forEach((field) => {
     if (req.body[field] !== undefined) req.user[field] = req.body[field];
   });
+  // A new document must be reviewed before it is treated as verified again.
+  if (req.body.documents !== undefined) {
+    req.user.documents = {
+      ...(req.user.documents?.toObject?.() || req.user.documents || {}),
+      ...req.body.documents,
+      verificationStatus: "PENDING",
+    };
+    req.user.isVerified = false;
+  }
   await req.user.save();
   return sendSuccess(res, { message: "Profile updated", data: { driver: req.user.toSafeJSON() } });
+});
+
+const changePassword = catchAsync(async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+  const driver = await Driver.findById(req.user._id).select("+password");
+  if (!driver || !(await driver.comparePassword(currentPassword))) {
+    return next(new AppError("Current password is incorrect", 401));
+  }
+  driver.password = newPassword;
+  await driver.save();
+  return sendSuccess(res, { message: "Password changed successfully" });
 });
 
 const goOnline = catchAsync(async (req, res) => {
@@ -155,6 +175,7 @@ module.exports = {
   logout,
   getProfile,
   updateProfile,
+  changePassword,
   goOnline,
   goOffline,
   getStatus,

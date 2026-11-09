@@ -92,7 +92,7 @@ async function createOrder({ amountInRupees, currency, receipt, metadata = {} })
 
   if (isMockMode()) {
     return {
-      id: stripeIntent.id || `order_mock_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      id: `order_mock_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
       amount: Math.round(amountInRupees * 100),
       currency: currency || "INR",
       receipt,
